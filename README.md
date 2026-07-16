@@ -180,7 +180,7 @@ A：生产版默认已关闭调试日志（头部 `DEBUG = false`）。需要排
 ## 作者与支持 (Author & Support)
 
 - **作者 (Author)**：Tao MUSE（游戏内显示名：𝐓𝐀𝐎 𝑀𝒰𝒮𝔼）
-- **技术支持 (Technical Support)**：Liko — [liko-Plugin-Repository](https://github.com/awdrrawd/liko-Plugin-Repository)
+- **核心贡献者 / 技术支持 (Core Contributor)**：[Liko](https://github.com/awdrrawd) — [liko-Plugin-Repository](https://github.com/awdrrawd/liko-Plugin-Repository)
 - **反馈与建议**：欢迎在仓库 [Issues](https://github.com/heitaoplay/QuickInteraction/issues) 提出
 
 ## 许可证 (License)
