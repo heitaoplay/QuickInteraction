@@ -1,0 +1,16 @@
+# 系统 / 编辑器
+.DS_Store
+Thumbs.db
+*.log
+.idea/
+.vscode/
+
+# 依赖
+node_modules/
+
+# 本地临时 / 调试脚本（不入库）
+dev/
+
+# 截图等二进制
+*.png
+*.jpg

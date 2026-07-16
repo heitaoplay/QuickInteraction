@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="420" viewBox="0 0 1200 420" font-family="'Segoe UI', 'Helvetica Neue', Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0c0e14"/>
+      <stop offset="1" stop-color="#161b26"/>
+    </linearGradient>
+    <linearGradient id="rose" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#FF5C7A"/>
+      <stop offset="1" stop-color="#FF8FA3"/>
+    </linearGradient>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M40 0 L0 0 0 40" fill="none" stroke="#ffffff" stroke-opacity="0.04" stroke-width="1"/>
+    </pattern>
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="6" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <rect width="1200" height="420" fill="url(#bg)"/>
+  <rect width="1200" height="420" fill="url(#grid)"/>
+
+  <!-- top accent line -->
+  <rect x="0" y="0" width="1200" height="4" fill="url(#rose)"/>
+
+  <!-- corner ticks -->
+  <path d="M40 48 L40 88 M40 48 L80 48" fill="none" stroke="#FF5C7A" stroke-width="2" stroke-opacity="0.7"/>
+  <path d="M1160 372 L1160 332 M1160 372 L1120 372" fill="none" stroke="#FF5C7A" stroke-width="2" stroke-opacity="0.7"/>
+
+  <!-- wordmark (Chinese name + English subtitle) -->
+  <text x="64" y="156" font-size="76" font-weight="800" letter-spacing="2">
+    <tspan fill="#FF5C7A">快捷</tspan><tspan fill="#F4F6FB">互动</tspan>
+  </text>
+  <text x="66" y="200" font-size="28" font-weight="600" fill="#C7CEDB" letter-spacing="6">QUICK·INTERACTION</text>
+
+  <!-- tagline -->
+  <text x="66" y="250" font-size="20" fill="#8B93A7">Bondage Club 动作快捷操作台</text>
+  <text x="66" y="282" font-size="20" fill="#8B93A7">点部位选动作，一步到位</text>
+
+  <!-- version pill -->
+  <g>
+    <rect x="66" y="312" width="118" height="34" rx="17" fill="#FF5C7A" fill-opacity="0.14" stroke="#FF5C7A" stroke-opacity="0.5"/>
+    <text x="86" y="335" font-size="16" font-weight="700" fill="#FF8FA3">v0.6.0</text>
+    <text x="138" y="335" font-size="14" fill="#8B93A7">release</text>
+  </g>
+
+  <!-- feature chips -->
+  <g font-size="15" font-weight="600">
+    <rect x="640" y="92" width="170" height="38" rx="10" fill="#ffffff" fill-opacity="0.05" stroke="#ffffff" stroke-opacity="0.1"/>
+    <text x="660" y="116" fill="#F4F6FB">Action Mode</text>
+
+    <rect x="828" y="92" width="150" height="38" rx="10" fill="#ffffff" fill-opacity="0.05" stroke="#ffffff" stroke-opacity="0.1"/>
+    <text x="848" y="116" fill="#F4F6FB">All-Room</text>
+
+    <rect x="640" y="146" width="180" height="38" rx="10" fill="#ffffff" fill-opacity="0.05" stroke="#ffffff" stroke-opacity="0.1"/>
+    <text x="660" y="170" fill="#F4F6FB">Favorites</text>
+
+    <rect x="840" y="146" width="138" height="38" rx="10" fill="#ffffff" fill-opacity="0.05" stroke="#ffffff" stroke-opacity="0.1"/>
+    <text x="860" y="170" fill="#F4F6FB">Combos</text>
+
+    <rect x="640" y="200" width="200" height="38" rx="10" fill="#ffffff" fill-opacity="0.05" stroke="#ffffff" stroke-opacity="0.1"/>
+    <text x="660" y="224" fill="#F4F6FB">Self Mode</text>
+
+    <rect x="864" y="200" width="114" height="38" rx="10" fill="#ffffff" fill-opacity="0.05" stroke="#ffffff" stroke-opacity="0.1"/>
+    <text x="884" y="224" fill="#F4F6FB">ECHO</text>
+
+    <rect x="640" y="254" width="200" height="38" rx="10" fill="#ffffff" fill-opacity="0.05" stroke="#ffffff" stroke-opacity="0.1"/>
+    <text x="660" y="278" fill="#F4F6FB">LSCG Compat</text>
+
+    <rect x="864" y="254" width="114" height="38" rx="10" fill="#ffffff" fill-opacity="0.05" stroke="#ffffff" stroke-opacity="0.1"/>
+    <text x="884" y="278" fill="#F4F6FB">Auto</text>
+  </g>
+
+  <!-- right side glow dot motif -->
+  <circle cx="1100" cy="150" r="60" fill="none" stroke="#FF5C7A" stroke-opacity="0.25" stroke-width="2"/>
+  <circle cx="1100" cy="150" r="34" fill="#FF5C7A" fill-opacity="0.12" filter="url(#glow)"/>
+  <circle cx="1100" cy="150" r="8" fill="#FF5C7A"/>
+</svg>
