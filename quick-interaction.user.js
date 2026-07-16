@@ -2,7 +2,7 @@
 // @name         快捷互动 (QuickInteraction)
 // @name:zh      快捷互动
 // @namespace    https://github.com/heitaoplay/QuickInteraction
-// @version      0.6.4
+// @version      0.7.0
 // @description  Bondage Club - 统一动作操作台。一键进入动作模式，在聊天室场景内直接点人物部位选动作，绕过原生5步嵌套菜单。
 // @author       Tao MUSE
 // @homepageURL  https://github.com/heitaoplay/QuickInteraction
@@ -39,7 +39,7 @@
         console.log.apply(console, args);
     }
 
-    const VERSION = '0.6.4';
+    const VERSION = '0.7.0';
 
     // ── 存储键 ──
     const S_ENABLED = 'xsact_qa_enabled';
@@ -56,6 +56,8 @@
     const state = {
         modApi: null,                 // bcModSdk 注册句柄
         isActive: false,              // 动作模式是否激活
+        theme: 'dark-rose',           // 当前主题 id
+        animEnabled: true,            // 过渡动画开关（默认开启）
         selectedTarget: null,         // 当前选中目标 Character
         selectedPart: null,           // 当前选中部位 ItemGroup
         selectedAction: null,         // 当前选中动作名
@@ -193,6 +195,74 @@
     function saveStorage(key, val) {
         try { localStorage.setItem(key, JSON.stringify(val)); }
         catch (e) { console.error('[XSAct-QA] 写入存储失败 ' + key + ':', e); }
+    }
+
+    // ── 主题 / 设置键 ──
+    const S_THEME = 'xsact_qa_theme';
+    const S_ANIM  = 'xsact_qa_anim';
+    const MOD_NS  = 'XSAct_QA';
+
+    // 主题定义：base=dark/light 决定面板明暗，accent 为品牌强调色
+    const THEMES = [
+        { id:'dark-rose',    name:'暗夜玫红', base:'dark',  accent:'#FF5C7A', accentRgb:'255,92,122', accentText:'var(--xs-accent-text)' },
+        { id:'dark-violet',  name:'暗夜紫晶', base:'dark',  accent:'#A87BFF', accentRgb:'168,123,255', accentText:'#E4D6FF' },
+        { id:'dark-emerald', name:'暗夜翠绿', base:'dark',  accent:'#2FD08A', accentRgb:'47,208,138',  accentText:'#CFFAE8' },
+        { id:'dark-amber',   name:'暗夜琥珀', base:'dark',  accent:'#FFB23E', accentRgb:'255,178,62',  accentText:'#FFE9C2' },
+        { id:'light-rose',   name:'日间玫红', base:'light', accent:'#FF5C7A', accentRgb:'255,92,122', accentText:'#D6336C' },
+        { id:'light-violet', name:'日间紫晶', base:'light', accent:'#8B5CF6', accentRgb:'139,92,246',  accentText:'#5A2DBF' }
+    ];
+    function getTheme(id) {
+        for (var i = 0; i < THEMES.length; i++) if (THEMES[i].id === id) return THEMES[i];
+        return THEMES[0];
+    }
+
+    // ── 服务器（游戏账号）持久化：写入 Player.OnlineSettings.ExtensionSettings ──
+    // 注意：BC 的 ServerAccountUpdate 是 AccountUpdater 实例，不是函数；
+    // 正确同步方式是 ServerAccountUpdate.QueueData({ OnlineSettings: Player.OnlineSettings })，
+    // 其内部自带 ~2s 防抖合并，且未登录（CharacterID===""）时自动跳过。
+    function getServerStore() {
+        try {
+            if (typeof Player === 'undefined' || !Player.OnlineSettings) return null;
+            if (!Player.OnlineSettings.ExtensionSettings) Player.OnlineSettings.ExtensionSettings = {};
+            if (!Player.OnlineSettings.ExtensionSettings[MOD_NS]) Player.OnlineSettings.ExtensionSettings[MOD_NS] = {};
+            return Player.OnlineSettings.ExtensionSettings[MOD_NS];
+        } catch (e) { return null; }
+    }
+    function saveToServer(key, val) {
+        var store = getServerStore();
+        if (!store) return; // 玩家未登录或无法访问账号：仅落 localStorage（persist 已做）
+        store[key] = val;
+        try {
+            if (typeof ServerAccountUpdate !== 'undefined' && ServerAccountUpdate && typeof ServerAccountUpdate.QueueData === 'function') {
+                ServerAccountUpdate.QueueData({ OnlineSettings: Player.OnlineSettings });
+            }
+        } catch (_) {}
+    }
+    function loadFromServer(key, fallback) {
+        var store = getServerStore();
+        if (!store || !(key in store)) return fallback;
+        return store[key];
+    }
+    // 统一持久化：本地 + 服务器（服务器优先回读，跨设备生效）
+    function persist(key, val) {
+        saveStorage(key, val);
+        saveToServer(key, val);
+    }
+    function loadSetting(key, fallback) {
+        var s = loadFromServer(key, undefined);
+        if (s !== undefined) return s;
+        return loadStorage(key, fallback);
+    }
+
+    // ── 主题 / 动画应用 ──
+    function applyTheme(themeId) {
+        var t = getTheme(themeId);
+        state.theme = t.id;
+        document.documentElement.setAttribute('data-xsact-theme', t.id);
+    }
+    function applyAnimState() {
+        if (state.animEnabled) document.documentElement.classList.remove('xsact-no-anim');
+        else document.documentElement.classList.add('xsact-no-anim');
     }
 
     /** 获取动作列表（按部位过滤 + 前置条件实时校验） */
@@ -586,7 +656,7 @@
        ══════════════════════════════════════════════════════════════ */
 
     function generateId() { return 'cmb_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 7); }
-    function saveCombos() { saveStorage(S_COMBOS, state.combos); }
+    function saveCombos() { persist(S_COMBOS, state.combos); }
     function getCombo(id) { return state.combos.find(function(c) { return c.id === id; }); }
 
     function addCombo(name) {
@@ -711,7 +781,7 @@
             state.favorites.splice(idx, 1);
             toast('取消收藏', '#888');
         }
-        saveStorage(S_FAVS, state.favorites);
+        persist(S_FAVS, state.favorites);
         if (btn && state.selectedPart) {
             btn.classList.toggle('fav', idx === -1);
             var star = btn.querySelector('.xsact-action-star');
@@ -733,7 +803,7 @@
     /** 切换「自己」模式：开启后可选中并对自己执行动作 */
     function toggleSelfMode() {
         state.selfModeActive = !state.selfModeActive;
-        saveStorage(S_SELF, state.selfModeActive);
+        persist(S_SELF, state.selfModeActive);
         updateSelfButtonVisual();
         if (state.isActive) refreshBodyGrids();
         toast(state.selfModeActive ? '自己模式：开启 · 现在可以点击自己身体' : '自己模式：关闭',
@@ -750,7 +820,7 @@
         if (!Array.isArray(state.favorites) || state.favorites.length === 0) { toast('当前没有收藏动作', '#888'); return; }
         if (!confirm('确定清空全部收藏动作吗？')) return;
         state.favorites = [];
-        saveStorage(S_FAVS, state.favorites);
+        persist(S_FAVS, state.favorites);
         renderPanel();
         toast('已清空全部收藏', '#888');
     }
@@ -826,7 +896,7 @@
      */
     function toggleActionMode() {
         state.isActive = !state.isActive;
-        saveStorage(S_ENABLED, state.isActive);
+        persist(S_ENABLED, state.isActive);
 
         if (state.isActive) enterActionMode();
         else exitActionMode();
@@ -837,7 +907,7 @@
     function enterActionMode() {
         logD('进入动作模式');
         state.isActive = true;
-        saveStorage(S_ENABLED, true);
+        persist(S_ENABLED, true);
 
         // 防御：清除所有残留的旧 UI（重复注入/历史模块可能导致多份面板），
         // 确保单实例，避免动作被写进隐藏的旧面板
@@ -856,7 +926,7 @@
             makeResizable(state.actionPanelEl);
         }
         // 恢复上次使用的模式（首次无记录则默认「单部位」）
-        var savedMode = loadStorage(S_MODE, 'part');
+        var savedMode = loadSetting(S_MODE, 'part');
         if (savedMode !== 'part' && savedMode !== 'combo') savedMode = 'part';
         state.panelMode = savedMode;
         state.actionPanelEl.querySelectorAll('.xsact-mode-tab').forEach(function(tab) {
@@ -868,7 +938,7 @@
         renderPanel();
 
         // 恢复自己模式开关状态
-        try { state.selfModeActive = loadStorage(S_SELF, false); } catch (_) {}
+        try { state.selfModeActive = loadSetting(S_SELF, false); } catch (_) {}
         updateSelfButtonVisual();
 
         // 为每个角色创建身体部位浮动网格
@@ -907,6 +977,7 @@
     <span class="xsact-panel-grip" id="xsact-drag-grip" title="拖动面板">' + svgIcon('grip', 16) + '</span>\
     <span id="xsact-panel-title">选择部位...</span>\
     <span class="xsact-panel-head-actions">\
+      <button class="xsact-qa-mini-btn" id="xsact-settings-btn" title="界面设置（主题 / 动画）">' + svgIcon('settings', 15) + '</button>\
       <button class="xsact-qa-mini-btn" id="xsact-refresh-btn" title="刷新当前部位/人物的动作列表状态">' + svgIcon('refresh', 15) + '</button>\
       <button class="xsact-qa-mini-btn" id="xsact-exit-panel-btn" title="退出快速动作模式 (Esc)">' + svgIcon('close', 15) + '</button>\
     </span>\
@@ -1234,7 +1305,7 @@
     function setPanelMode(mode) {
         if (mode !== 'part' && mode !== 'combo') return;
         state.panelMode = mode;
-        saveStorage(S_MODE, mode);
+        persist(S_MODE, mode);
         if (state.actionPanelEl) {
             state.actionPanelEl.querySelectorAll('.xsact-mode-tab').forEach(function(tab) {
                 tab.classList.toggle('active', tab.dataset.mode === mode);
@@ -1248,7 +1319,7 @@
         if (!state.actionPanelEl || !state.selectedTarget) { toast('请先选择一个人物部位', '#888'); return; }
         if (state.panelMode === 'combo') {
             // 重新从存储加载组合，并刷新视图
-            try { state.combos = loadStorage(S_COMBOS, []); } catch (_) {}
+            try { state.combos = loadSetting(S_COMBOS, []); } catch (_) {}
             updateComboPanel(state.selectedTarget);
             toast('组合列表已刷新', '#FF5C7A');
         } else {
@@ -1429,7 +1500,8 @@
             users:    '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
             target:   '<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/>',
             layers:   '<path d="M12 3L2 9l10 6 10-6-10-6z"/><path d="M2 15l10 6 10-6"/>',
-            user:     '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>'
+            user:     '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
+            settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>'
         };
         var inner = P[name] || '';
         return '<svg class="xsact-ico" viewBox="0 0 24 24" width="' + size + '" height="' + size +
@@ -1515,7 +1587,7 @@
     /** 把面板恢复到上次拖拽保存的位置（无记录则用默认右上角） */
     function applyPanelPosition() {
         if (!state.actionPanelEl) return;
-        var saved = loadStorage(S_POS, null);
+        var saved = loadSetting(S_POS, null);
         if (saved && typeof saved.left === 'number' && typeof saved.top === 'number') {
             state.actionPanelEl.style.right = 'auto';
             state.actionPanelEl.style.bottom = 'auto';
@@ -1528,13 +1600,13 @@
     function savePanelPosition() {
         if (!state.actionPanelEl) return;
         var r = state.actionPanelEl.getBoundingClientRect();
-        saveStorage(S_POS, { left: Math.round(r.left), top: Math.round(r.top) });
+        persist(S_POS, { left: Math.round(r.left), top: Math.round(r.top) });
     }
 
     /** 应用保存的面板尺寸 */
     function applyPanelSize() {
         if (!state.actionPanelEl) return;
-        var saved = loadStorage(S_SIZE, null);
+        var saved = loadSetting(S_SIZE, null);
         if (saved && typeof saved.width === 'number' && typeof saved.height === 'number') {
             state.actionPanelEl.style.width = Math.max(220, Math.min(560, saved.width)) + 'px';
             state.actionPanelEl.style.height = Math.max(300, Math.min(window.innerHeight - 60, saved.height)) + 'px';
@@ -1544,7 +1616,7 @@
     /** 保存面板尺寸（缩放结束调用） */
     function savePanelSize() {
         if (!state.actionPanelEl) return;
-        saveStorage(S_SIZE, { width: Math.round(state.actionPanelEl.offsetWidth), height: Math.round(state.actionPanelEl.offsetHeight) });
+        persist(S_SIZE, { width: Math.round(state.actionPanelEl.offsetWidth), height: Math.round(state.actionPanelEl.offsetHeight) });
     }
 
     /** 让面板右下角可缩放 */
@@ -1669,6 +1741,106 @@
         // 清空收藏按钮
         var favClearBtn = panel.querySelector('#xsact-fav-clear-btn');
         if (favClearBtn) favClearBtn.addEventListener('click', clearAllFavorites);
+
+        // 界面设置按钮（齿轮）
+        var settingsBtn = panel.querySelector('#xsact-settings-btn');
+        if (settingsBtn) settingsBtn.addEventListener('click', openSettings);
+    }
+
+    /** 取当前主题强调色（用于 toast 等需要真实颜色值的场景） */
+    function accentColor() {
+        try { return getComputedStyle(document.documentElement).getPropertyValue('--xs-accent').trim() || '#FF5C7A'; }
+        catch (e) { return '#FF5C7A'; }
+    }
+
+    /** 界面设置弹窗 HTML */
+    function settingsHTML() {
+        var themeBtns = THEMES.map(function(t) {
+            var sel = (t.id === state.theme) ? ' sel' : '';
+            return '<button class="xsact-theme-swatch' + sel + '" data-theme="' + t.id + '" title="' + t.name + '">' +
+                '<span class="xsact-swatch-dot" style="background:' + t.accent + '"></span>' +
+                '<span class="xsact-swatch-name">' + t.name + '</span></button>';
+        }).join('');
+        return '' +
+            '<div class="xsact-set-header">' +
+            '  <span class="xsact-set-title">界面设置</span>' +
+            '  <button class="xsact-set-close" id="xsact-set-close" title="关闭">' + svgIcon('close', 14) + '</button>' +
+            '</div>' +
+            '<div class="xsact-set-body">' +
+            '  <div class="xsact-set-section">' +
+            '    <div class="xsact-set-section-title">主题配色</div>' +
+            '    <div class="xsact-theme-grid">' + themeBtns + '</div>' +
+            '  </div>' +
+            '  <div class="xsact-set-section">' +
+            '    <div class="xsact-set-section-title">动画</div>' +
+            '    <div class="xsact-set-row">' +
+            '      <div><div class="xsact-set-label">过渡动画</div>' +
+            '      <div class="xsact-set-desc">开关面板与列表的淡入、切换动画（首次安装默认开启）</div></div>' +
+            '      <label class="xsact-switch"><input type="checkbox" id="xsact-anim-toggle"' + (state.animEnabled ? ' checked' : '') + '>' +
+            '        <span class="xsact-switch-track"></span><span class="xsact-switch-thumb"></span></label>' +
+            '    </div>' +
+            '  </div>' +
+            '</div>' +
+            '<div class="xsact-set-foot">' +
+            '  <button class="xsact-set-reset" id="xsact-set-reset">恢复默认设置</button>' +
+            '</div>';
+    }
+
+    /** 打开界面设置弹窗（定位贴合当前面板） */
+    function openSettings() {
+        if (!state.actionPanelEl) return;
+        if (document.getElementById('xsact-settings')) return;
+        var r = state.actionPanelEl.getBoundingClientRect();
+        var modal = document.createElement('div');
+        modal.id = 'xsact-settings';
+        modal.style.left = Math.round(r.left) + 'px';
+        modal.style.top = Math.round(r.top) + 'px';
+        modal.style.width = Math.round(r.width) + 'px';
+        modal.style.height = Math.round(r.height) + 'px';
+        modal.innerHTML = settingsHTML();
+        document.body.appendChild(modal);
+        bindSettingsEvents(modal);
+    }
+
+    /** 关闭界面设置弹窗 */
+    function closeSettings() {
+        var m = document.getElementById('xsact-settings');
+        if (m) m.remove();
+    }
+
+    /** 绑定设置弹窗事件 */
+    function bindSettingsEvents(modal) {
+        var closeBtn = modal.querySelector('#xsact-set-close');
+        if (closeBtn) closeBtn.addEventListener('click', closeSettings);
+
+        modal.querySelectorAll('.xsact-theme-swatch').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                var id = btn.dataset.theme;
+                applyTheme(id);
+                persist(S_THEME, id);
+                modal.querySelectorAll('.xsact-theme-swatch').forEach(function(b) {
+                    b.classList.toggle('sel', b === btn);
+                });
+            });
+        });
+
+        var animToggle = modal.querySelector('#xsact-anim-toggle');
+        if (animToggle) animToggle.addEventListener('change', function() {
+            state.animEnabled = !!animToggle.checked;
+            applyAnimState();
+            persist(S_ANIM, state.animEnabled);
+        });
+
+        var resetBtn = modal.querySelector('#xsact-set-reset');
+        if (resetBtn) resetBtn.addEventListener('click', function() {
+            applyTheme('dark-rose');
+            state.animEnabled = true;
+            applyAnimState();
+            persist(S_THEME, 'dark-rose');
+            persist(S_ANIM, true);
+            closeSettings();
+            toast('已恢复默认设置', accentColor());
+        });
     }
 
     /** 重复上次动作 */
@@ -1689,11 +1861,63 @@
     // CSS 样式注入
     // ════════════════════════════════════════════════════════════════════════
 
+    // 生成主题调色板 CSS（[data-xsact-theme="id"] 提供各主题变量）
+    function buildThemeVarsCSS() {
+        var DARK = {
+            bg:'rgba(20,23,28,0.98)', bg2:'#1C2027', border:'rgba(255,255,255,0.08)',
+            borderStrong:'rgba(255,255,255,0.18)', text:'#E7E9EE', textDim:'#9AA1AD',
+            textFaint:'#5F6672', hover:'#232833', shadow:'0 14px 44px rgba(0,0,0,0.55)',
+            scroll:'#3A3F49', blur:'blur(10px)', inputBg:'#10131A',
+            btnBg:'rgba(255,255,255,0.05)', nameShadow:'rgba(255,92,122,0.45)'
+        };
+        var LIGHT = {
+            bg:'rgba(255,252,253,0.97)', bg2:'#F1F0F4', border:'rgba(28,22,32,0.10)',
+            borderStrong:'rgba(28,22,32,0.22)', text:'#2A2F3A', textDim:'#6B7480',
+            textFaint:'#9AA3AF', hover:'#E4E2EA', shadow:'0 14px 40px rgba(60,40,80,0.18)',
+            scroll:'#C9CCD3', blur:'blur(14px)', inputBg:'#FFFFFF',
+            btnBg:'rgba(28,22,32,0.05)', nameShadow:'rgba(255,92,122,0.35)'
+        };
+        // 默认回退（置于最前）：:root 与 [data-xsact-theme] 特异性相同(0,1,0)，
+        // 必须让主题规则靠后、优先生效；属性缺失时才回退到这里。
+        var blocks = [':root{' +
+            '--xs-accent:#FF5C7A;--xs-accent-rgb:255,92,122;--xs-accent-soft:rgba(255,92,122,0.14);--xs-accent-text:#FFD6DF;' +
+            '--xs-panel-bg:rgba(20,23,28,0.98);--xs-panel-bg-2:#1C2027;--xs-border:rgba(255,255,255,0.08);' +
+            '--xs-border-strong:rgba(255,255,255,0.18);--xs-text:#E7E9EE;--xs-text-dim:#9AA1AD;--xs-text-faint:#5F6672;' +
+            '--xs-hover:#232833;--xs-shadow:0 14px 44px rgba(0,0,0,0.55);--xs-scroll:#3A3F49;--xs-blur:blur(10px);' +
+            '--xs-input-bg:#10131A;--xs-btn-bg:rgba(255,255,255,0.05);--xs-name-shadow:rgba(255,92,122,0.45);' +
+        '}'];
+        THEMES.forEach(function(t) {
+            var p = (t.base === 'light') ? LIGHT : DARK;
+            blocks.push('[data-xsact-theme="' + t.id + '"]{' +
+                '--xs-accent:' + t.accent + ';' +
+                '--xs-accent-rgb:' + t.accentRgb + ';' +
+                '--xs-accent-soft:rgba(' + t.accentRgb + ',0.14);' +
+                '--xs-accent-text:' + t.accentText + ';' +
+                '--xs-panel-bg:' + p.bg + ';' +
+                '--xs-panel-bg-2:' + p.bg2 + ';' +
+                '--xs-border:' + p.border + ';' +
+                '--xs-border-strong:' + p.borderStrong + ';' +
+                '--xs-text:' + p.text + ';' +
+                '--xs-text-dim:' + p.textDim + ';' +
+                '--xs-text-faint:' + p.textFaint + ';' +
+                '--xs-hover:' + p.hover + ';' +
+                '--xs-shadow:' + p.shadow + ';' +
+                '--xs-scroll:' + p.scroll + ';' +
+                '--xs-blur:' + p.blur + ';' +
+                '--xs-input-bg:' + p.inputBg + ';' +
+                '--xs-btn-bg:' + p.btnBg + ';' +
+                '--xs-name-shadow:' + p.nameShadow + ';' +
+            '}');
+        });
+        return blocks.join('\n');
+    }
+
     function injectStyles() {
         if (document.getElementById('xsact-qa-styles')) return;
         var css = document.createElement('style');
         css.id = 'xsact-qa-styles';
         css.textContent = [
+            buildThemeVarsCSS(),
             /* 统一图标基样式 */
             '.xsact-ico{display:block;flex-shrink:0;}',
 
@@ -1701,15 +1925,15 @@
             '#xsact-toggle-btn{',
             '  position:fixed;bottom:72px;right:16px;z-index:100000;',
             '  width:44px;height:44px;border-radius:13px;',
-            '  background:rgba(255,92,122,0.85);border:2px solid rgba(255,92,122,0.5);',
+            '  background:rgb(var(--xs-accent-rgb) / 0.85);border:2px solid rgb(var(--xs-accent-rgb) / 0.5);',
             '  color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;',
             '  backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);',
-            '  box-shadow:0 4px 16px rgba(0,0,0,0.35),0 0 8px rgba(255,92,122,0.2);',
+            '  box-shadow:0 4px 16px var(--xs-shadow),0 0 8px rgb(var(--xs-accent-rgb) / 0.2);',
             '  transition:all 0.2s ease;outline:none;',
             '}',
             '#xsact-toggle-btn:hover{',
-            '  background:rgba(255,92,122,1);border-color:#FF5C7A;',
-            '  box-shadow:0 6px 24px rgba(0,0,0,0.45),0 0 16px rgba(255,92,122,0.4);',
+            '  background:rgb(var(--xs-accent-rgb) / 1);border-color:var(--xs-accent);',
+            '  box-shadow:0 6px 24px var(--xs-shadow),0 0 16px rgb(var(--xs-accent-rgb) / 0.4);',
             '  transform:scale(1.08);',
             '}',
             '#xsact-toggle-btn.active{',
@@ -1723,11 +1947,11 @@
             /* ===== 右侧面板（暗色战术操作台） ===== */
             '#xsact-qa-panel{',
             '  position:fixed;top:48px;right:12px;width:300px;height:520px;z-index:90000;',
-            '  background:rgba(20,23,28,0.98);border-radius:14px;',
-            '  border:1px solid rgba(255,255,255,0.08);',
+            '  background:var(--xs-panel-bg);border-radius:14px;',
+            '  border:1px solid var(--xs-border);',
             '  display:flex;flex-direction:column;overflow:hidden;',
             '  backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);',
-            '  box-shadow:0 14px 44px rgba(0,0,0,0.55);',
+            '  box-shadow:0 14px 44px var(--xs-shadow);',
             '  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif;',
             '  min-width:220px;min-height:300px;max-width:560px;max-height:86vh;',
             '}',
@@ -1736,14 +1960,14 @@
             /* 标题栏 = 拖拽手柄 */
             '.xsact-qa-panel-header{',
             '  display:flex;justify-content:space-between;align-items:center;gap:8px;',
-            '  padding:11px 12px 9px;border-bottom:1px solid rgba(255,255,255,0.07);',
+            '  padding:11px 12px 9px;border-bottom:1px solid var(--xs-border);',
             '  cursor:grab;user-select:none;-webkit-user-select:none;',
             '}',
             '.xsact-qa-panel-header.dragging{cursor:grabbing;}',
-            '.xsact-panel-grip{color:#5F6672;display:flex;transition:color .15s;}',
-            '.xsact-qa-panel-header.dragging .xsact-panel-grip{color:#FF5C7A;}',
+            '.xsact-panel-grip{color:var(--xs-text-faint);display:flex;transition:color .15s;}',
+            '.xsact-qa-panel-header.dragging .xsact-panel-grip{color:var(--xs-accent);}',
             '#xsact-panel-title{',
-            '  flex:1;min-width:0;font-size:13px;font-weight:600;color:#E7E9EE;',
+            '  flex:1;min-width:0;font-size:13px;font-weight:600;color:var(--xs-text);',
             '  letter-spacing:0.3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;',
             '}',
             '.xsact-panel-head-actions{display:flex;gap:5px;flex-shrink:0;}',
@@ -1754,21 +1978,21 @@
             '}',
             '.xsact-mode-tab{',
             '  flex:1;padding:8px 8px;font-size:12px;cursor:pointer;',
-            '  background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);',
-            '  border-radius:8px;color:#9AA1AD;transition:all 0.15s ease;',
+            '  background:var(--xs-btn-bg);border:1px solid var(--xs-border);',
+            '  border-radius:8px;color:var(--xs-text-dim);transition:all 0.15s ease;',
             '  display:flex;align-items:center;justify-content:center;gap:6px;',
             '}',
             '.xsact-mode-tab .xsact-ico{width:14px;height:14px;stroke-width:2.2px;}',
-            '.xsact-mode-tab:hover{color:#E7E9EE;border-color:rgba(255,255,255,0.18);}',
+            '.xsact-mode-tab:hover{color:var(--xs-text);border-color:var(--xs-border-strong);}',
             '.xsact-mode-tab.active{',
-            '  background:rgba(255,92,122,0.14);border-color:#FF5C7A;color:#FFD6DF;font-weight:600;',
+            '  background:rgb(var(--xs-accent-rgb) / 0.14);border-color:var(--xs-accent);color:var(--xs-accent-text);font-weight:600;',
             '}',
 
             /* 类型计数徽标 */
             '.xsact-type-count{',
             '  margin-left:auto;min-width:20px;text-align:center;',
-            '  font-size:11px;font-weight:700;color:#FF9DB1;',
-            '  background:rgba(255,92,122,0.16);border-radius:9px;padding:1px 7px;',
+            '  font-size:11px;font-weight:700;color:var(--xs-accent-text);',
+            '  background:rgb(var(--xs-accent-rgb) / 0.16);border-radius:9px;padding:1px 7px;',
             '}',
 
             '.xsact-qa-panel-body{',
@@ -1778,23 +2002,23 @@
             '  align-content:start;',
             '}',
             '.xsact-qa-empty{',
-            '  color:#5F6672;text-align:center;padding:42px 14px;font-size:12px;line-height:1.6;grid-column:1 / -1;',
+            '  color:var(--xs-text-faint);text-align:center;padding:42px 14px;font-size:12px;line-height:1.6;grid-column:1 / -1;',
             '}',
 
             /* 动作按钮 */
             '.xsact-action-btn{',
             '  display:flex;align-items:center;gap:8px;',
             '  width:100%;padding:10px 11px;',
-            '  background:#1C2027;border:1px solid rgba(255,255,255,0.06);',
+            '  background:var(--xs-panel-bg-2);border:1px solid var(--xs-border);',
             '  border-left:2px solid transparent;',
             '  border-radius:8px;color:#C7CCD6;font-size:12.5px;cursor:pointer;',
             '  transition:background .15s ease,border-color .15s ease,color .15s ease,box-shadow .15s ease;text-align:left;',
             '}',
             '.xsact-action-btn:hover{',
-            '  background:#232833;border-color:rgba(255,255,255,0.12);color:#fff;',
+            '  background:var(--xs-hover);border-color:rgba(255,255,255,0.12);color:#fff;',
             '}',
             '.xsact-action-btn.sel{',
-            '  background:rgba(255,92,122,0.12);border-color:#FF5C7A;border-left-color:#FF5C7A;color:#FFD6DF;',
+            '  background:rgb(var(--xs-accent-rgb) / 0.12);border-color:var(--xs-accent);border-left-color:var(--xs-accent);color:var(--xs-accent-text);',
             '}',
             '.xsact-action-btn.fav{',
             '  background:rgba(232,179,57,0.12);border-color:rgba(232,179,57,0.55);border-left-color:#E8B339;color:#FCEBC0;',
@@ -1824,53 +2048,53 @@
             '  grid-column:1 / -1;',
             '  display:flex;justify-content:space-between;align-items:center;',
             '  padding:11px 12px;margin-bottom:7px;',
-            '  background:#1C2027;border:1px solid rgba(255,255,255,0.06);',
+            '  background:var(--xs-panel-bg-2);border:1px solid var(--xs-border);',
             '  border-radius:9px;color:#C7CCD6;',
             '}',
             '.xsact-combo-info{display:flex;flex-direction:column;gap:2px;min-width:0;}',
-            '.xsact-combo-name{font-size:13px;font-weight:600;color:#E7E9EE;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
-            '.xsact-combo-count{font-size:11px;color:#5F6672;}',
+            '.xsact-combo-name{font-size:13px;font-weight:600;color:var(--xs-text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
+            '.xsact-combo-count{font-size:11px;color:var(--xs-text-faint);}',
             '.xsact-combo-btns{display:flex;gap:6px;}',
             '.xsact-combo-btns button{',
             '  width:30px;height:30px;border-radius:7px;cursor:pointer;',
-            '  background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.10);',
-            '  color:#9AA1AD;display:flex;align-items:center;justify-content:center;transition:all 0.15s ease;',
+            '  background:var(--xs-btn-bg);border:1px solid var(--xs-border-strong);',
+            '  color:var(--xs-text-dim);display:flex;align-items:center;justify-content:center;transition:all 0.15s ease;',
             '}',
-            '.xsact-combo-run:hover{background:rgba(255,92,122,0.18);border-color:#FF5C7A;color:#FFD6DF;}',
+            '.xsact-combo-run:hover{background:rgb(var(--xs-accent-rgb) / 0.18);border-color:var(--xs-accent);color:var(--xs-accent-text);}',
             '.xsact-combo-edit:hover{background:rgba(70,224,160,0.16);border-color:#46E0A0;color:#CFFAE8;}',
             '.xsact-combo-delete:hover{background:rgba(255,92,92,0.16);border-color:#FF5C5C;color:#FFB3B3;}',
             '.xsact-combo-new-btn{',
             '  grid-column:1 / -1;',
             '  width:100%;padding:10px;margin-top:7px;',
-            '  background:rgba(255,92,122,0.08);border:1px dashed rgba(255,92,122,0.4);',
-            '  border-radius:8px;color:#FF9DB1;font-size:12.5px;cursor:pointer;',
+            '  background:rgb(var(--xs-accent-rgb) / 0.08);border:1px dashed rgb(var(--xs-accent-rgb) / 0.4);',
+            '  border-radius:8px;color:var(--xs-accent-text);font-size:12.5px;cursor:pointer;',
             '  display:flex;align-items:center;justify-content:center;gap:6px;transition:all 0.15s ease;',
             '}',
-            '.xsact-combo-new-btn:hover{background:rgba(255,92,122,0.16);color:#fff;}',
+            '.xsact-combo-new-btn:hover{background:rgb(var(--xs-accent-rgb) / 0.16);color:#fff;}',
 
             /* 预设栏 */
             '.xsact-combo-editor{grid-column:1 / -1;display:flex;flex-direction:column;gap:11px;}',
             '.xsact-combo-field input{',
             '  width:100%;padding:8px 10px;box-sizing:border-box;',
-            '  background:#10131A;border:1px solid rgba(255,255,255,0.10);',
-            '  border-radius:7px;color:#E7E9EE;font-size:13px;',
+            '  background:var(--xs-input-bg);border:1px solid var(--xs-border-strong);',
+            '  border-radius:7px;color:var(--xs-text);font-size:13px;',
             '}',
-            '.xsact-combo-field input:focus{outline:none;border-color:#FF5C7A;}',
-            '.xsact-combo-delay label{display:block;font-size:12px;color:#9AA1AD;margin-bottom:6px;}',
-            '.xsact-combo-delay #xsact-delay-val{color:#FF5C7A;font-weight:700;}',
-            '.xsact-combo-delay input[type=range]{width:100%;accent-color:#FF5C7A;height:4px;cursor:pointer;}',
+            '.xsact-combo-field input:focus{outline:none;border-color:var(--xs-accent);}',
+            '.xsact-combo-delay label{display:block;font-size:12px;color:var(--xs-text-dim);margin-bottom:6px;}',
+            '.xsact-combo-delay #xsact-delay-val{color:var(--xs-accent);font-weight:700;}',
+            '.xsact-combo-delay input[type=range]{width:100%;accent-color:var(--xs-accent);height:4px;cursor:pointer;}',
             '.xsact-combo-items{',
             '  display:flex;flex-direction:column;gap:6px;max-height:230px;overflow-y:auto;',
             '  scrollbar-width:thin;scrollbar-color:#444 transparent;',
             '}',
             '.xsact-combo-item{',
             '  display:flex;align-items:center;gap:7px;padding:8px;',
-            '  background:#1C2027;border:1px solid rgba(255,255,255,0.06);',
+            '  background:var(--xs-panel-bg-2);border:1px solid var(--xs-border);',
             '  border-radius:7px;font-size:12px;color:#C7CCD6;',
             '}',
             '.xsact-combo-item-num{',
             '  min-width:18px;text-align:center;font-size:10px;font-weight:700;',
-            '  color:#FF9DB1;background:rgba(255,92,122,0.16);border-radius:5px;padding:1px 0;',
+            '  color:var(--xs-accent-text);background:rgb(var(--xs-accent-rgb) / 0.16);border-radius:5px;padding:1px 0;',
             '}',
             '.xsact-combo-item-part{',
             '  min-width:42px;color:#8F97A5;font-weight:500;',
@@ -1878,28 +2102,28 @@
             '.xsact-combo-item-action{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
             '.xsact-combo-item button{',
             '  width:24px;height:24px;padding:0;border-radius:6px;cursor:pointer;',
-            '  background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.10);',
-            '  color:#9AA1AD;display:flex;align-items:center;justify-content:center;transition:all 0.15s ease;',
+            '  background:var(--xs-btn-bg);border:1px solid var(--xs-border-strong);',
+            '  color:var(--xs-text-dim);display:flex;align-items:center;justify-content:center;transition:all 0.15s ease;',
             '}',
-            '.xsact-combo-item-up:hover,.xsact-combo-item-down:hover{border-color:#FF5C7A;color:#FFD6DF;}',
+            '.xsact-combo-item-up:hover,.xsact-combo-item-down:hover{border-color:var(--xs-accent);color:var(--xs-accent-text);}',
             '.xsact-combo-item-del:hover{border-color:#FF5C5C;color:#FFB3B3;}',
             '.xsact-combo-actions{display:flex;gap:8px;}',
             '.xsact-combo-actions button{flex:1;padding:9px;border-radius:7px;cursor:pointer;font-size:13px;border:none;color:#fff;}',
             '.xsact-combo-save-btn{background:#46E0A0;}',
             '.xsact-combo-save-btn:hover{background:#2FC989;}',
-            '.xsact-combo-cancel-btn{background:rgba(255,255,255,0.08);}',
-            '.xsact-combo-cancel-btn:hover{background:rgba(255,255,255,0.16);}',
+            '.xsact-combo-cancel-btn{background:var(--xs-border);}',
+            '.xsact-combo-cancel-btn:hover{background:var(--xs-border-strong);}',
 
             /* 底部操作栏 */
             '.xsact-qa-panel-footer{',
-            '  display:flex;align-items:center;gap:7px;padding:11px 12px;border-top:1px solid rgba(255,255,255,0.07);',
+            '  display:flex;align-items:center;gap:7px;padding:11px 12px;border-top:1px solid var(--xs-border);',
             '}',
             '.xsact-qa-mini-btn{',
-            '  background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);',
-            '  border-radius:8px;padding:8px 10px;font-size:12px;color:#9AA1AD;cursor:pointer;',
+            '  background:var(--xs-btn-bg);border:1px solid var(--xs-border);',
+            '  border-radius:8px;padding:8px 10px;font-size:12px;color:var(--xs-text-dim);cursor:pointer;',
             '  display:flex;align-items:center;justify-content:center;gap:6px;transition:background .15s,border-color .15s,color .15s,box-shadow .15s;',
             '}',
-            '.xsact-qa-mini-btn:hover{background:#232833;border-color:rgba(255,255,255,0.18);color:#E7E9EE;}',
+            '.xsact-qa-mini-btn:hover{background:var(--xs-hover);border-color:var(--xs-border-strong);color:var(--xs-text);}',
             '#xsact-refresh-btn,#xsact-exit-panel-btn{padding:0;width:28px;height:28px;}',
             '#xsact-x3-btn{padding:8px 10px;min-width:34px;}',
             '.xsact-toggle-pill{gap:5px;padding:8px 10px;}',
@@ -1911,7 +2135,7 @@
             '#xsact-fav-btn.on .xsact-pill-dot{background:#E8B339;border-color:#E8B339;}',
             '#xsact-self-btn.on{color:#46E0A0;border-color:rgba(70,224,160,0.6);background:rgba(70,224,160,0.12);}',
             '#xsact-self-btn.on .xsact-pill-dot{background:#46E0A0;border-color:#46E0A0;box-shadow:0 0 8px rgba(70,224,160,0.7);}',
-            '#xsact-fav-clear-btn{padding:0;width:28px;height:28px;color:#9AA1AD;}',
+            '#xsact-fav-clear-btn{padding:0;width:28px;height:28px;color:var(--xs-text-dim);}',
             '#xsact-fav-clear-btn:hover{background:rgba(255,92,92,0.12);border-color:rgba(255,92,92,0.5);color:#FFB3B3;}',
 
             /* 预设栏 */
@@ -1923,11 +2147,11 @@
             '.xsact-resize-handle{',
             '  position:absolute;right:4px;bottom:4px;width:18px;height:18px;',
             '  display:flex;align-items:flex-end;justify-content:flex-end;',
-            '  color:#5F6672;cursor:nwse-resize;z-index:10;transition:color .15s;',
+            '  color:var(--xs-text-faint);cursor:nwse-resize;z-index:10;transition:color .15s;',
             '  pointer-events:auto;',
             '}',
-            '.xsact-resize-handle:hover{color:#FF5C7A;}',
-            '.xsact-resize-handle.resizing{color:#FF5C7A;}',
+            '.xsact-resize-handle:hover{color:var(--xs-accent);}',
+            '.xsact-resize-handle.resizing{color:var(--xs-accent);}',
             '.xsact-resize-handle .xsact-ico{width:14px;height:14px;}',
 
             /* ===== 浮动身体网格（霓虹线框，按 BC 原生 Zone 定位） ===== */
@@ -1969,11 +2193,12 @@
             '}',
             '.xsact-name-overlay{',
             '  position:absolute;top:0;left:0;transform:translateX(-50%);',
-            '  font-size:15px;font-weight:800;color:#fff;',
-            '  background:rgba(28,30,40,0.9);padding:3px 12px;border-radius:10px;',
-            '  border:1.5px solid #FF5C7A;',
+            '  font-size:15px;font-weight:800;color:var(--xs-text);',
+            '  background:var(--xs-panel-bg);padding:3px 12px;border-radius:10px;',
+            '  transition:background-color .3s ease,border-color .3s ease;',
+            '  border:1.5px solid var(--xs-accent);',
             '  text-shadow:0 1px 3px rgba(0,0,0,1);',
-            '  box-shadow:0 0 12px rgba(255,92,122,0.45);',
+            '  box-shadow:0 0 12px rgb(var(--xs-accent-rgb) / 0.45);',
             '  white-space:nowrap;letter-spacing:1px;',
             '  pointer-events:none;',
             '}',
@@ -1985,7 +2210,60 @@
             /* ===== 滚动条 ===== */
             '.xsact-qa-panel-body::-webkit-scrollbar{width:6px;}',
             '.xsact-qa-panel-body::-webkit-scrollbar-track{background:transparent;}',
-            '.xsact-qa-panel-body::-webkit-scrollbar-thumb{background:#3A3F49;border-radius:3px;}',
+            '.xsact-qa-panel-body::-webkit-scrollbar-thumb{background:var(--xs-scroll);border-radius:3px;}',
+
+            /* ===== 主题色切换过渡 ===== */
+            '#xsact-qa-panel,#xsact-toggle-btn,.xsact-name-overlay{',
+            '  transition:background-color .3s ease,border-color .3s ease,color .3s ease,box-shadow .3s ease;',
+            '}',
+            '#xsact-qa-panel{animation:xsact-pop-in .28s cubic-bezier(.16,1,.3,1);}',
+
+            /* ===== 过渡动画 ===== */
+            '@keyframes xsact-pop-in{from{opacity:0;transform:translateY(-8px) scale(.98);}to{opacity:1;transform:none;}}',
+            '@keyframes xsact-fade-in{from{opacity:0;transform:translateY(4px);}to{opacity:1;transform:none;}}',
+            '.xsact-action-btn,.xsact-combo-card{animation:xsact-fade-in .22s ease both;}',
+            '#xsact-settings{animation:xsact-pop-in .26s cubic-bezier(.16,1,.3,1);}',
+            /* 动画总开关关闭时：禁用全部过渡与动画 */
+            'html.xsact-no-anim *{transition:none !important;animation:none !important;}',
+            'html.xsact-no-anim #xsact-qa-panel{animation:none !important;}',
+
+            /* ===== 设置弹窗 ===== */
+            '#xsact-settings{',
+            '  position:fixed;z-index:95000;display:flex;flex-direction:column;overflow:hidden;',
+            '  background:var(--xs-panel-bg);border:1px solid var(--xs-border);border-radius:14px;',
+            '  backdrop-filter:var(--xs-blur);-webkit-backdrop-filter:var(--xs-blur);',
+            '  box-shadow:var(--xs-shadow);color:var(--xs-text);',
+            '  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif;',
+            '}',
+            '.xsact-set-header{display:flex;align-items:center;justify-content:space-between;padding:11px 12px 9px;border-bottom:1px solid var(--xs-border);}',
+            '.xsact-set-title{font-size:13px;font-weight:600;color:var(--xs-text);}',
+            '.xsact-set-close{width:26px;height:26px;border-radius:7px;cursor:pointer;background:var(--xs-btn-bg);border:1px solid var(--xs-border);color:var(--xs-text-dim);display:flex;align-items:center;justify-content:center;transition:all .15s;}',
+            '.xsact-set-close:hover{background:var(--xs-hover);color:var(--xs-text);}',
+            '.xsact-set-body{flex:1;overflow-y:auto;padding:12px;scrollbar-width:thin;scrollbar-color:var(--xs-scroll) transparent;}',
+            '.xsact-set-section{margin-bottom:16px;}',
+            '.xsact-set-section-title{font-size:12px;font-weight:600;color:var(--xs-text-dim);margin-bottom:8px;letter-spacing:.3px;}',
+            '.xsact-theme-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;}',
+            '.xsact-theme-swatch{',
+            '  display:flex;flex-direction:column;align-items:center;gap:6px;padding:9px 4px;border-radius:10px;cursor:pointer;',
+            '  background:var(--xs-btn-bg);border:1.5px solid var(--xs-border);transition:all .15s ease;',
+            '}',
+            '.xsact-theme-swatch:hover{border-color:var(--xs-border-strong);}',
+            '.xsact-theme-swatch.sel{border-color:var(--xs-accent);box-shadow:0 0 0 2px var(--xs-accent-soft) inset;}',
+            '.xsact-swatch-dot{width:30px;height:30px;border-radius:50%;border:2px solid rgba(255,255,255,0.15);}',
+            '.xsact-swatch-name{font-size:11px;color:var(--xs-text-dim);}',
+            '.xsact-theme-swatch.sel .xsact-swatch-name{color:var(--xs-accent-text);font-weight:600;}',
+            '.xsact-set-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;background:var(--xs-btn-bg);border:1px solid var(--xs-border);border-radius:10px;}',
+            '.xsact-set-label{font-size:12.5px;color:var(--xs-text);}',
+            '.xsact-set-desc{font-size:11px;color:var(--xs-text-faint);margin-top:2px;line-height:1.4;}',
+            '.xsact-switch{position:relative;width:42px;height:24px;flex-shrink:0;cursor:pointer;}',
+            '.xsact-switch input{display:none;}',
+            '.xsact-switch .xsact-switch-track{position:absolute;inset:0;background:var(--xs-border-strong);border-radius:999px;transition:background .2s;}',
+            '.xsact-switch .xsact-switch-thumb{position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fff;transition:transform .2s;box-shadow:0 1px 3px rgba(0,0,0,.3);}',
+            '.xsact-switch input:checked + .xsact-switch-track{background:var(--xs-accent);}',
+            '.xsact-switch input:checked + .xsact-switch-track + .xsact-switch-thumb{transform:translateX(18px);}',
+            '.xsact-set-foot{padding:10px 12px;border-top:1px solid var(--xs-border);}',
+            '.xsact-set-reset{width:100%;padding:9px;border-radius:8px;cursor:pointer;font-size:13px;border:1px solid var(--xs-border);background:var(--xs-btn-bg);color:var(--xs-text-dim);transition:all .15s;}',
+            '.xsact-set-reset:hover{background:var(--xs-hover);color:var(--xs-text);border-color:var(--xs-border-strong);}',
         ].join('\n');
         document.head.appendChild(css);
     }
@@ -2146,7 +2424,7 @@
             run: function() {
                 // 显示设置子页
                 DrawText('快速动作 操作台', 1800, 150, 'Black', 'Gray');
-                var enabled = !!loadStorage(S_ENABLED, false);
+                var enabled = !!loadSetting(S_ENABLED, false);
                 DrawButton(1815, 190, 380, 30, enabled ? '已开启 (点击关闭)' : '默认开启', '#White', '', () => {
                     if (state.isActive) exitActionMode();
                     else enterActionMode();
@@ -2199,12 +2477,18 @@
         logD('玩家已登入:', Player.AccountName || Player.Name);
 
         // 加载存储
-        try { state.isActive = loadStorage(S_ENABLED, false); } catch (_) {}
-        try { state.selfModeActive = loadStorage(S_SELF, false); } catch (_) {}
-        try { state.favorites = loadStorage(S_FAVS, []); } catch (_) {}
-        try { state.presets = loadStorage(S_PRESETS, []); } catch (_) {}
+        try { state.isActive = loadSetting(S_ENABLED, false); } catch (_) {}
+        try { state.selfModeActive = loadSetting(S_SELF, false); } catch (_) {}
+        try { state.favorites = loadSetting(S_FAVS, []); } catch (_) {}
+        try { state.presets = loadSetting(S_PRESETS, []); } catch (_) {}
         try { state.lastAction = loadStorage(S_LAST, null); } catch (_) {}
-        try { state.combos = loadStorage(S_COMBOS, []); } catch (_) {}
+        try { state.combos = loadSetting(S_COMBOS, []); } catch (_) {}
+
+        // 恢复界面设置（主题 / 动画），优先读游戏账号，回退本地
+        try { state.theme = loadSetting(S_THEME, 'dark-rose'); } catch (_) {}
+        try { state.animEnabled = loadSetting(S_ANIM, true); } catch (_) {}
+        try { applyTheme(state.theme); } catch (_) {}
+        try { applyAnimState(); } catch (_) {}
 
         // 注入样式
         try { injectStyles(); } catch (e) { console.warn('[XSAct-QA] injectStyles 失败:', e); }
@@ -2252,6 +2536,14 @@
             toggleFavMode: toggleFavMode,
             toggleSelfMode: toggleSelfMode,
             clearAllFavorites: clearAllFavorites,
+            // ── 界面设置 ──
+            setTheme: function(id) { applyTheme(id); persist(S_THEME, id); return state.theme; },
+            getTheme: function() { return state.theme; },
+            listThemes: function() { return THEMES.map(function(t){ return { id:t.id, name:t.name }; }); },
+            setAnim: function(on) { state.animEnabled = !!on; applyAnimState(); persist(S_ANIM, state.animEnabled); return state.animEnabled; },
+            getAnim: function() { return state.animEnabled; },
+            openSettings: openSettings,
+            closeSettings: closeSettings,
             get editingComboId() { return state.editingComboId; },
             get selectedTarget() { return state.selectedTarget; },
             get selectedPart() { return state.selectedPart; },
