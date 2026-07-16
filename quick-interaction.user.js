@@ -2,7 +2,7 @@
 // @name         快捷互动 (QuickInteraction)
 // @name:zh      快捷互动
 // @namespace    https://github.com/heitaoplay/QuickInteraction
-// @version      0.7.1
+// @version      0.7.2
 // @description  Bondage Club - 统一动作操作台。一键进入动作模式，在聊天室场景内直接点人物部位选动作，绕过原生5步嵌套菜单。
 // @author       Tao MUSE
 // @homepageURL  https://github.com/heitaoplay/QuickInteraction
@@ -39,7 +39,7 @@
         console.log.apply(console, args);
     }
 
-    const VERSION = '0.7.1';
+    const VERSION = '0.7.2';
 
     // ── 存储键 ──
     const S_ENABLED = 'xsact_qa_enabled';
@@ -56,8 +56,7 @@
     const state = {
         modApi: null,                 // bcModSdk 注册句柄
         isActive: false,              // 动作模式是否激活
-        theme: 'dark-rose',           // 当前主题 id
-        animEnabled: true,            // 过渡动画开关（默认开启）
+        theme: 'dark',                // 当前主题 id（dark | light）
         selectedTarget: null,         // 当前选中目标 Character
         selectedPart: null,           // 当前选中部位 ItemGroup
         selectedAction: null,         // 当前选中动作名
@@ -199,17 +198,12 @@
 
     // ── 主题 / 设置键 ──
     const S_THEME = 'xsact_qa_theme';
-    const S_ANIM  = 'xsact_qa_anim';
     const MOD_NS  = 'XSAct_QA';
 
-    // 主题定义：base=dark/light 决定面板明暗，accent 为品牌强调色
+    // 主题定义：仅保留深色 / 浅色两套，强调色固定玫红
     const THEMES = [
-        { id:'dark-rose',    name:'暗夜玫红', base:'dark',  accent:'#FF5C7A', accentRgb:'255,92,122', accentText:'var(--xs-accent-text)' },
-        { id:'dark-violet',  name:'暗夜紫晶', base:'dark',  accent:'#A87BFF', accentRgb:'168,123,255', accentText:'#E4D6FF' },
-        { id:'dark-emerald', name:'暗夜翠绿', base:'dark',  accent:'#2FD08A', accentRgb:'47,208,138',  accentText:'#CFFAE8' },
-        { id:'dark-amber',   name:'暗夜琥珀', base:'dark',  accent:'#FFB23E', accentRgb:'255,178,62',  accentText:'#FFE9C2' },
-        { id:'light-rose',   name:'日间玫红', base:'light', accent:'#FF5C7A', accentRgb:'255,92,122', accentText:'#D6336C' },
-        { id:'light-violet', name:'日间紫晶', base:'light', accent:'#8B5CF6', accentRgb:'139,92,246',  accentText:'#5A2DBF' }
+        { id:'dark',  name:'深色', base:'dark' },
+        { id:'light', name:'浅色', base:'light' }
     ];
     function getTheme(id) {
         for (var i = 0; i < THEMES.length; i++) if (THEMES[i].id === id) return THEMES[i];
@@ -254,15 +248,17 @@
         return loadStorage(key, fallback);
     }
 
-    // ── 主题 / 动画应用 ──
+    // ── 主题应用 ──
     function applyTheme(themeId) {
         var t = getTheme(themeId);
         state.theme = t.id;
         document.documentElement.setAttribute('data-xsact-theme', t.id);
     }
-    function applyAnimState() {
-        if (state.animEnabled) document.documentElement.classList.remove('xsact-no-anim');
-        else document.documentElement.classList.add('xsact-no-anim');
+    function toggleTheme() {
+        var next = (state.theme === 'dark') ? 'light' : 'dark';
+        applyTheme(next);
+        persist(S_THEME, next);
+        toast('已切换为' + (next === 'dark' ? '深色' : '浅色') + '主题', accentColor());
     }
 
     /** 获取动作列表（按部位过滤 + 前置条件实时校验） */
@@ -977,7 +973,7 @@
     <span class="xsact-panel-grip" id="xsact-drag-grip" title="拖动面板">' + svgIcon('grip', 16) + '</span>\
     <span id="xsact-panel-title">选择部位...</span>\
     <span class="xsact-panel-head-actions">\
-      <button class="xsact-qa-mini-btn" id="xsact-settings-btn" title="界面设置（主题 / 动画）">' + svgIcon('settings', 15) + '</button>\
+      <button class="xsact-qa-mini-btn" id="xsact-theme-btn" title="切换深色/浅色主题"><span class="xsact-theme-icon sun">' + svgIcon('sun', 15) + '</span><span class="xsact-theme-icon moon">' + svgIcon('moon', 15) + '</span></button>\
       <button class="xsact-qa-mini-btn" id="xsact-refresh-btn" title="刷新当前部位/人物的动作列表状态">' + svgIcon('refresh', 15) + '</button>\
       <button class="xsact-qa-mini-btn" id="xsact-exit-panel-btn" title="退出快速动作模式 (Esc)">' + svgIcon('close', 15) + '</button>\
     </span>\
@@ -1508,7 +1504,9 @@
             target:   '<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/>',
             layers:   '<path d="M12 3L2 9l10 6 10-6-10-6z"/><path d="M2 15l10 6 10-6"/>',
             user:     '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
-            settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>'
+            settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
+            sun:      '<circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>',
+            moon:     '<path d="M21 12.79A9 9 0 1 1 11.21 3a7 7 0 0 0 9.79 9.79z"/>'
         };
         var inner = P[name] || '';
         return '<svg class="xsact-ico" viewBox="0 0 24 24" width="' + size + '" height="' + size +
@@ -1749,105 +1747,15 @@
         var favClearBtn = panel.querySelector('#xsact-fav-clear-btn');
         if (favClearBtn) favClearBtn.addEventListener('click', clearAllFavorites);
 
-        // 界面设置按钮（齿轮）
-        var settingsBtn = panel.querySelector('#xsact-settings-btn');
-        if (settingsBtn) settingsBtn.addEventListener('click', openSettings);
+        // 主题切换按钮（太阳/月亮）
+        var themeBtn = panel.querySelector('#xsact-theme-btn');
+        if (themeBtn) themeBtn.addEventListener('click', toggleTheme);
     }
 
     /** 取当前主题强调色（用于 toast 等需要真实颜色值的场景） */
     function accentColor() {
         try { return getComputedStyle(document.documentElement).getPropertyValue('--xs-accent').trim() || '#FF5C7A'; }
         catch (e) { return '#FF5C7A'; }
-    }
-
-    /** 界面设置弹窗 HTML */
-    function settingsHTML() {
-        var themeBtns = THEMES.map(function(t) {
-            var sel = (t.id === state.theme) ? ' sel' : '';
-            return '<button class="xsact-theme-swatch' + sel + '" data-theme="' + t.id + '" title="' + t.name + '">' +
-                '<span class="xsact-swatch-dot" style="background:' + t.accent + '"></span>' +
-                '<span class="xsact-swatch-name">' + t.name + '</span></button>';
-        }).join('');
-        return '' +
-            '<div class="xsact-set-header">' +
-            '  <span class="xsact-set-title">界面设置</span>' +
-            '  <button class="xsact-set-close" id="xsact-set-close" title="关闭">' + svgIcon('close', 14) + '</button>' +
-            '</div>' +
-            '<div class="xsact-set-body">' +
-            '  <div class="xsact-set-section">' +
-            '    <div class="xsact-set-section-title">主题配色</div>' +
-            '    <div class="xsact-theme-grid">' + themeBtns + '</div>' +
-            '  </div>' +
-            '  <div class="xsact-set-section">' +
-            '    <div class="xsact-set-section-title">动画</div>' +
-            '    <div class="xsact-set-row">' +
-            '      <div><div class="xsact-set-label">过渡动画</div>' +
-            '      <div class="xsact-set-desc">开关面板与列表的淡入、切换动画（首次安装默认开启）</div></div>' +
-            '      <label class="xsact-switch"><input type="checkbox" id="xsact-anim-toggle"' + (state.animEnabled ? ' checked' : '') + '>' +
-            '        <span class="xsact-switch-track"></span><span class="xsact-switch-thumb"></span></label>' +
-            '    </div>' +
-            '  </div>' +
-            '</div>' +
-            '<div class="xsact-set-foot">' +
-            '  <button class="xsact-set-reset" id="xsact-set-reset">恢复默认设置</button>' +
-            '</div>';
-    }
-
-    /** 打开界面设置弹窗（定位贴合当前面板） */
-    function openSettings() {
-        if (!state.actionPanelEl) return;
-        if (document.getElementById('xsact-settings')) return;
-        var r = state.actionPanelEl.getBoundingClientRect();
-        var modal = document.createElement('div');
-        modal.id = 'xsact-settings';
-        modal.style.left = Math.round(r.left) + 'px';
-        modal.style.top = Math.round(r.top) + 'px';
-        modal.style.width = Math.round(r.width) + 'px';
-        modal.style.height = Math.round(r.height) + 'px';
-        modal.innerHTML = settingsHTML();
-        document.body.appendChild(modal);
-        bindSettingsEvents(modal);
-    }
-
-    /** 关闭界面设置弹窗 */
-    function closeSettings() {
-        var m = document.getElementById('xsact-settings');
-        if (m) m.remove();
-    }
-
-    /** 绑定设置弹窗事件 */
-    function bindSettingsEvents(modal) {
-        var closeBtn = modal.querySelector('#xsact-set-close');
-        if (closeBtn) closeBtn.addEventListener('click', closeSettings);
-
-        modal.querySelectorAll('.xsact-theme-swatch').forEach(function(btn) {
-            btn.addEventListener('click', function() {
-                var id = btn.dataset.theme;
-                applyTheme(id);
-                persist(S_THEME, id);
-                modal.querySelectorAll('.xsact-theme-swatch').forEach(function(b) {
-                    b.classList.toggle('sel', b === btn);
-                });
-            });
-        });
-
-        var animToggle = modal.querySelector('#xsact-anim-toggle');
-        if (animToggle) animToggle.addEventListener('change', function() {
-            state.animEnabled = !!animToggle.checked;
-            applyAnimState();
-            persist(S_ANIM, state.animEnabled);
-        });
-
-        var resetBtn = modal.querySelector('#xsact-set-reset');
-        if (resetBtn) resetBtn.addEventListener('click', function() {
-            applyTheme('dark-rose');
-            state.animEnabled = true;
-            applyAnimState();
-            persist(S_THEME, 'dark-rose');
-            persist(S_ANIM, true);
-            closeSettings();
-            toast('已恢复默认设置', accentColor());
-        });
     }
 
     /** 重复上次动作 */
@@ -1868,7 +1776,7 @@
     // CSS 样式注入
     // ════════════════════════════════════════════════════════════════════════
 
-    // 生成主题调色板 CSS（[data-xsact-theme="id"] 提供各主题变量）
+    // 生成主题调色板 CSS（只保留 dark/light 两套）
     function buildThemeVarsCSS() {
         var DARK = {
             bg:'rgba(20,23,28,0.98)', bg2:'#1C2027', border:'rgba(255,255,255,0.08)',
@@ -1884,22 +1792,24 @@
             scroll:'#C9CCD3', blur:'blur(14px)', inputBg:'#FFFFFF',
             btnBg:'rgba(28,22,32,0.05)', nameShadow:'rgba(255,92,122,0.35)'
         };
+        var ACCENT = '#FF5C7A', ACCENT_RGB = '255,92,122';
         // 默认回退（置于最前）：:root 与 [data-xsact-theme] 特异性相同(0,1,0)，
         // 必须让主题规则靠后、优先生效；属性缺失时才回退到这里。
         var blocks = [':root{' +
-            '--xs-accent:#FF5C7A;--xs-accent-rgb:255,92,122;--xs-accent-soft:rgba(255,92,122,0.14);--xs-accent-text:#FFD6DF;' +
-            '--xs-panel-bg:rgba(20,23,28,0.98);--xs-panel-bg-2:#1C2027;--xs-border:rgba(255,255,255,0.08);' +
-            '--xs-border-strong:rgba(255,255,255,0.18);--xs-text:#E7E9EE;--xs-text-dim:#9AA1AD;--xs-text-faint:#5F6672;' +
-            '--xs-hover:#232833;--xs-shadow:0 14px 44px rgba(0,0,0,0.55);--xs-scroll:#3A3F49;--xs-blur:blur(10px);' +
-            '--xs-input-bg:#10131A;--xs-btn-bg:rgba(255,255,255,0.05);--xs-name-shadow:rgba(255,92,122,0.45);' +
+            '--xs-accent:' + ACCENT + ';--xs-accent-rgb:' + ACCENT_RGB + ';--xs-accent-soft:rgba(' + ACCENT_RGB + ',0.14);--xs-accent-text:#D6336C;' +
+            '--xs-panel-bg:' + LIGHT.bg + ';--xs-panel-bg-2:' + LIGHT.bg2 + ';--xs-border:' + LIGHT.border + ';' +
+            '--xs-border-strong:' + LIGHT.borderStrong + ';--xs-text:' + LIGHT.text + ';--xs-text-dim:' + LIGHT.textDim + ';--xs-text-faint:' + LIGHT.textFaint + ';' +
+            '--xs-hover:' + LIGHT.hover + ';--xs-shadow:' + LIGHT.shadow + ';--xs-scroll:' + LIGHT.scroll + ';--xs-blur:' + LIGHT.blur + ';' +
+            '--xs-input-bg:' + LIGHT.inputBg + ';--xs-btn-bg:' + LIGHT.btnBg + ';--xs-name-shadow:' + LIGHT.nameShadow + ';' +
         '}'];
         THEMES.forEach(function(t) {
             var p = (t.base === 'light') ? LIGHT : DARK;
+            var accentText = (t.base === 'light') ? '#D6336C' : '#FFD6DF';
             blocks.push('[data-xsact-theme="' + t.id + '"]{' +
-                '--xs-accent:' + t.accent + ';' +
-                '--xs-accent-rgb:' + t.accentRgb + ';' +
-                '--xs-accent-soft:rgba(' + t.accentRgb + ',0.14);' +
-                '--xs-accent-text:' + t.accentText + ';' +
+                '--xs-accent:' + ACCENT + ';' +
+                '--xs-accent-rgb:' + ACCENT_RGB + ';' +
+                '--xs-accent-soft:rgba(' + ACCENT_RGB + ',0.14);' +
+                '--xs-accent-text:' + accentText + ';' +
                 '--xs-panel-bg:' + p.bg + ';' +
                 '--xs-panel-bg-2:' + p.bg2 + ';' +
                 '--xs-border:' + p.border + ';' +
@@ -2004,7 +1914,7 @@
 
             '.xsact-qa-panel-body{',
             '  flex:1;overflow-y:auto;padding:10px 12px;',
-            '  scrollbar-width:thin;scrollbar-color:#444 transparent;',
+            '  scrollbar-width:thin;scrollbar-color:var(--xs-scroll) transparent;',
             '  display:grid;grid-template-columns:repeat(auto-fill, minmax(120px, 1fr));gap:6px;',
             '  align-content:start;',
             '}',
@@ -2018,12 +1928,12 @@
             '  width:100%;padding:10px 11px;',
             '  background:var(--xs-panel-bg-2);border:1px solid var(--xs-border);',
             '  border-left:2px solid transparent;',
-            '  border-radius:8px;color:#C7CCD6;font-size:12.5px;cursor:pointer;',
+            '  border-radius:8px;color:var(--xs-text-dim);font-size:12.5px;cursor:pointer;',
             '  transition:background .15s ease,border-color .15s ease,color .15s ease,box-shadow .15s ease;text-align:left;',
             '}',
             '.xsact-action-btn:hover{',
-            '  background:var(--xs-hover);border-color:rgba(255,255,255,0.12);color:#fff;',
-            '}',
+            '  background:var(--xs-hover);border-color:var(--xs-border-strong);color:var(--xs-text);',
+            '}', 
             '.xsact-action-btn.sel{',
             '  background:rgb(var(--xs-accent-rgb) / 0.12);border-color:var(--xs-accent);border-left-color:var(--xs-accent);color:var(--xs-accent-text);',
             '}',
@@ -2056,7 +1966,7 @@
             '  display:flex;justify-content:space-between;align-items:center;',
             '  padding:11px 12px;margin-bottom:7px;',
             '  background:var(--xs-panel-bg-2);border:1px solid var(--xs-border);',
-            '  border-radius:9px;color:#C7CCD6;',
+            '  border-radius:9px;color:var(--xs-text-dim);',
             '}',
             '.xsact-combo-info{display:flex;flex-direction:column;gap:2px;min-width:0;}',
             '.xsact-combo-name{font-size:13px;font-weight:600;color:var(--xs-text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
@@ -2092,19 +2002,19 @@
             '.xsact-combo-delay input[type=range]{width:100%;accent-color:var(--xs-accent);height:4px;cursor:pointer;}',
             '.xsact-combo-items{',
             '  display:flex;flex-direction:column;gap:6px;max-height:230px;overflow-y:auto;',
-            '  scrollbar-width:thin;scrollbar-color:#444 transparent;',
+            '  scrollbar-width:thin;scrollbar-color:var(--xs-scroll) transparent;',
             '}',
             '.xsact-combo-item{',
             '  display:flex;align-items:center;gap:7px;padding:8px;',
             '  background:var(--xs-panel-bg-2);border:1px solid var(--xs-border);',
-            '  border-radius:7px;font-size:12px;color:#C7CCD6;',
+            '  border-radius:7px;font-size:12px;color:var(--xs-text-dim);',
             '}',
             '.xsact-combo-item-num{',
             '  min-width:18px;text-align:center;font-size:10px;font-weight:700;',
             '  color:var(--xs-accent-text);background:rgb(var(--xs-accent-rgb) / 0.16);border-radius:5px;padding:1px 0;',
             '}',
             '.xsact-combo-item-part{',
-            '  min-width:42px;color:#8F97A5;font-weight:500;',
+            '  min-width:42px;color:var(--xs-text-faint);font-weight:500;',
             '}',
             '.xsact-combo-item-action{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
             '.xsact-combo-item button{',
@@ -2115,10 +2025,10 @@
             '.xsact-combo-item-up:hover,.xsact-combo-item-down:hover{border-color:var(--xs-accent);color:var(--xs-accent-text);}',
             '.xsact-combo-item-del:hover{border-color:#FF5C5C;color:#FFB3B3;}',
             '.xsact-combo-actions{display:flex;gap:8px;}',
-            '.xsact-combo-actions button{flex:1;padding:9px;border-radius:7px;cursor:pointer;font-size:13px;border:none;color:#fff;}',
-            '.xsact-combo-save-btn{background:#46E0A0;}',
+            '.xsact-combo-actions button{flex:1;padding:9px;border-radius:7px;cursor:pointer;font-size:13px;border:none;color:var(--xs-text);}',
+            '.xsact-combo-save-btn{background:#46E0A0;color:#fff;}',
             '.xsact-combo-save-btn:hover{background:#2FC989;}',
-            '.xsact-combo-cancel-btn{background:var(--xs-border);}',
+            '.xsact-combo-cancel-btn{background:var(--xs-border);color:var(--xs-text);}',
             '.xsact-combo-cancel-btn:hover{background:var(--xs-border-strong);}',
 
             /* 底部操作栏 */
@@ -2135,7 +2045,7 @@
             '#xsact-x3-btn{padding:8px 10px;min-width:34px;}',
             '.xsact-toggle-pill{gap:5px;padding:8px 10px;}',
             '.xsact-toggle-pill .xsact-ico{width:14px;height:14px;stroke-width:2.2px;}',
-            '.xsact-pill-dot{width:7px;height:7px;border-radius:50%;background:#2D333B;border:1px solid rgba(255,255,255,0.22);transition:background .15s,box-shadow .15s,border-color .15s;}',
+            '.xsact-pill-dot{width:7px;height:7px;border-radius:50%;background:var(--xs-text-faint);border:1px solid var(--xs-border-strong);transition:background .15s,box-shadow .15s,border-color .15s;}',
             '.xsact-qa-mini-btn.on{color:#E8B339;border-color:rgba(232,179,57,0.6);background:rgba(232,179,57,0.12);box-shadow:0 0 10px rgba(232,179,57,0.12);}',
             '.xsact-toggle-pill.on .xsact-pill-dot{background:#E8B339;border-color:#E8B339;box-shadow:0 0 8px rgba(232,179,57,0.7);}',
             '#xsact-fav-btn.on{color:#E8B339;background:rgba(232,179,57,0.12);border-color:rgba(232,179,57,0.6);}',
@@ -2204,7 +2114,7 @@
             '  background:var(--xs-panel-bg);padding:3px 12px;border-radius:10px;',
             '  transition:background-color .3s ease,border-color .3s ease;',
             '  border:1.5px solid var(--xs-accent);',
-            '  text-shadow:0 1px 3px rgba(0,0,0,1);',
+            '  text-shadow:0 1px 2px rgb(0 0 0 / 0.45);',
             '  box-shadow:0 0 12px rgb(var(--xs-accent-rgb) / 0.45);',
             '  white-space:nowrap;letter-spacing:1px;',
             '  pointer-events:none;',
@@ -2229,48 +2139,11 @@
             '@keyframes xsact-pop-in{from{opacity:0;transform:translateY(-8px) scale(.98);}to{opacity:1;transform:none;}}',
             '@keyframes xsact-fade-in{from{opacity:0;transform:translateY(4px);}to{opacity:1;transform:none;}}',
             '.xsact-action-btn,.xsact-combo-card{animation:xsact-fade-in .22s ease both;}',
-            '#xsact-settings{animation:xsact-pop-in .26s cubic-bezier(.16,1,.3,1);}',
-            /* 动画总开关关闭时：禁用全部过渡与动画 */
-            'html.xsact-no-anim *{transition:none !important;animation:none !important;}',
-            'html.xsact-no-anim #xsact-qa-panel{animation:none !important;}',
 
-            /* ===== 设置弹窗 ===== */
-            '#xsact-settings{',
-            '  position:fixed;z-index:95000;display:flex;flex-direction:column;overflow:hidden;',
-            '  background:var(--xs-panel-bg);border:1px solid var(--xs-border);border-radius:14px;',
-            '  backdrop-filter:var(--xs-blur);-webkit-backdrop-filter:var(--xs-blur);',
-            '  box-shadow:var(--xs-shadow);color:var(--xs-text);',
-            '  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif;',
-            '}',
-            '.xsact-set-header{display:flex;align-items:center;justify-content:space-between;padding:11px 12px 9px;border-bottom:1px solid var(--xs-border);}',
-            '.xsact-set-title{font-size:13px;font-weight:600;color:var(--xs-text);}',
-            '.xsact-set-close{width:26px;height:26px;border-radius:7px;cursor:pointer;background:var(--xs-btn-bg);border:1px solid var(--xs-border);color:var(--xs-text-dim);display:flex;align-items:center;justify-content:center;transition:all .15s;}',
-            '.xsact-set-close:hover{background:var(--xs-hover);color:var(--xs-text);}',
-            '.xsact-set-body{flex:1;overflow-y:auto;padding:12px;scrollbar-width:thin;scrollbar-color:var(--xs-scroll) transparent;}',
-            '.xsact-set-section{margin-bottom:16px;}',
-            '.xsact-set-section-title{font-size:12px;font-weight:600;color:var(--xs-text-dim);margin-bottom:8px;letter-spacing:.3px;}',
-            '.xsact-theme-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;}',
-            '.xsact-theme-swatch{',
-            '  display:flex;flex-direction:column;align-items:center;gap:6px;padding:9px 4px;border-radius:10px;cursor:pointer;',
-            '  background:var(--xs-btn-bg);border:1.5px solid var(--xs-border);transition:all .15s ease;',
-            '}',
-            '.xsact-theme-swatch:hover{border-color:var(--xs-border-strong);}',
-            '.xsact-theme-swatch.sel{border-color:var(--xs-accent);box-shadow:0 0 0 2px var(--xs-accent-soft) inset;}',
-            '.xsact-swatch-dot{width:30px;height:30px;border-radius:50%;border:2px solid rgba(255,255,255,0.15);}',
-            '.xsact-swatch-name{font-size:11px;color:var(--xs-text-dim);}',
-            '.xsact-theme-swatch.sel .xsact-swatch-name{color:var(--xs-accent-text);font-weight:600;}',
-            '.xsact-set-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;background:var(--xs-btn-bg);border:1px solid var(--xs-border);border-radius:10px;}',
-            '.xsact-set-label{font-size:12.5px;color:var(--xs-text);}',
-            '.xsact-set-desc{font-size:11px;color:var(--xs-text-faint);margin-top:2px;line-height:1.4;}',
-            '.xsact-switch{position:relative;width:42px;height:24px;flex-shrink:0;cursor:pointer;}',
-            '.xsact-switch input{display:none;}',
-            '.xsact-switch .xsact-switch-track{position:absolute;inset:0;background:var(--xs-border-strong);border-radius:999px;transition:background .2s;}',
-            '.xsact-switch .xsact-switch-thumb{position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fff;transition:transform .2s;box-shadow:0 1px 3px rgba(0,0,0,.3);}',
-            '.xsact-switch input:checked + .xsact-switch-track{background:var(--xs-accent);}',
-            '.xsact-switch input:checked + .xsact-switch-track + .xsact-switch-thumb{transform:translateX(18px);}',
-            '.xsact-set-foot{padding:10px 12px;border-top:1px solid var(--xs-border);}',
-            '.xsact-set-reset{width:100%;padding:9px;border-radius:8px;cursor:pointer;font-size:13px;border:1px solid var(--xs-border);background:var(--xs-btn-bg);color:var(--xs-text-dim);transition:all .15s;}',
-            '.xsact-set-reset:hover{background:var(--xs-hover);color:var(--xs-text);border-color:var(--xs-border-strong);}',
+            /* 主题切换按钮图标显隐 */
+            '#xsact-theme-btn .xsact-theme-icon{display:none;}',
+            '[data-xsact-theme="dark"] #xsact-theme-btn .sun{display:block;}',
+            '[data-xsact-theme="light"] #xsact-theme-btn .moon{display:block;}',
         ].join('\n');
         document.head.appendChild(css);
     }
@@ -2491,11 +2364,9 @@
         try { state.lastAction = loadStorage(S_LAST, null); } catch (_) {}
         try { state.combos = loadSetting(S_COMBOS, []); } catch (_) {}
 
-        // 恢复界面设置（主题 / 动画），优先读游戏账号，回退本地
-        try { state.theme = loadSetting(S_THEME, 'dark-rose'); } catch (_) {}
-        try { state.animEnabled = loadSetting(S_ANIM, true); } catch (_) {}
+        // 恢复主题设置（优先读游戏账号，回退本地）
+        try { state.theme = loadSetting(S_THEME, 'dark'); } catch (_) {}
         try { applyTheme(state.theme); } catch (_) {}
-        try { applyAnimState(); } catch (_) {}
 
         // 注入样式
         try { injectStyles(); } catch (e) { console.warn('[XSAct-QA] injectStyles 失败:', e); }
@@ -2543,14 +2414,10 @@
             toggleFavMode: toggleFavMode,
             toggleSelfMode: toggleSelfMode,
             clearAllFavorites: clearAllFavorites,
-            // ── 界面设置 ──
+            // ── 主题切换 ──
+            toggleTheme: toggleTheme,
             setTheme: function(id) { applyTheme(id); persist(S_THEME, id); return state.theme; },
             getTheme: function() { return state.theme; },
-            listThemes: function() { return THEMES.map(function(t){ return { id:t.id, name:t.name }; }); },
-            setAnim: function(on) { state.animEnabled = !!on; applyAnimState(); persist(S_ANIM, state.animEnabled); return state.animEnabled; },
-            getAnim: function() { return state.animEnabled; },
-            openSettings: openSettings,
-            closeSettings: closeSettings,
             get editingComboId() { return state.editingComboId; },
             get selectedTarget() { return state.selectedTarget; },
             get selectedPart() { return state.selectedPart; },
