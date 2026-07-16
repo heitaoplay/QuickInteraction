@@ -2,7 +2,7 @@
 // @name         快捷互动 (QuickInteraction)
 // @name:zh      快捷互动
 // @namespace    https://github.com/heitaoplay/QuickInteraction
-// @version      0.7.0
+// @version      0.7.1
 // @description  Bondage Club - 统一动作操作台。一键进入动作模式，在聊天室场景内直接点人物部位选动作，绕过原生5步嵌套菜单。
 // @author       Tao MUSE
 // @homepageURL  https://github.com/heitaoplay/QuickInteraction
@@ -39,7 +39,7 @@
         console.log.apply(console, args);
     }
 
-    const VERSION = '0.7.0';
+    const VERSION = '0.7.1';
 
     // ── 存储键 ──
     const S_ENABLED = 'xsact_qa_enabled';
@@ -1189,6 +1189,13 @@
         grid.style.top = rect.top + 'px';
     }
 
+    /** 取 BC 真实人物昵称（优先 Nickname，与游戏内 CharacterNickname 一致） */
+    function characterDisplayName(charObj) {
+        if (!charObj) return '???';
+        if (typeof CharacterNickname === 'function') return CharacterNickname(charObj);
+        return charObj.Nickname || charObj.Name || '???';
+    }
+
     /** 创建角色名字浮层（放在独立视口层，避免被画布/窗口边缘裁切） */
     function createNameOverlay(entry) {
         var charObj = entry.char;
@@ -1202,7 +1209,7 @@
         }
         var overlay = document.createElement('div');
         overlay.className = 'xsact-name-overlay' + (charObj.IsPlayer && charObj.IsPlayer() ? ' self' : '');
-        overlay.textContent = charObj.Name || charObj.Nickname || '???';
+        overlay.textContent = characterDisplayName(charObj);
         overlay.dataset.mn = charObj.MemberNumber;
         layer.appendChild(overlay);
         state.nameOverlays.set(charObj, overlay);
@@ -1419,7 +1426,7 @@
         }
 
         // ── 列表视图 ──
-        titleEl.textContent = (charObj.Name || '?') + ' → 组合动作';
+        titleEl.textContent = (characterDisplayName(charObj) || '?') + ' → 组合动作';
         if (allBtn) allBtn.disabled = false;
 
         var html = '';
@@ -1519,7 +1526,7 @@
         if (!titleEl || !listEl) return;
 
         var partLabel = BODY_PARTS.find(function(p) { return p.group === partGroup; });
-        titleEl.textContent = (charObj.Name || '?') + ' → ' + (partLabel ? partLabel.label : partGroup);
+        titleEl.textContent = (characterDisplayName(charObj) || '?') + ' → ' + (partLabel ? partLabel.label : partGroup);
 
         var actions = getActionsForPart(partGroup, charObj);
         if (actions.length === 0) {
