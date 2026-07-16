@@ -2,7 +2,7 @@
 // @name         快捷互动 (QuickInteraction)
 // @name:zh      快捷互动
 // @namespace    https://github.com/heitaoplay/QuickInteraction
-// @version      0.6.1
+// @version      0.6.2
 // @description  Bondage Club - 统一动作操作台。一键进入动作模式，在聊天室场景内直接点人物部位选动作，绕过原生5步嵌套菜单。
 // @author       Tao MUSE
 // @homepageURL  https://github.com/heitaoplay/QuickInteraction
@@ -39,7 +39,7 @@
         console.log.apply(console, args);
     }
 
-    const VERSION = '0.6.0';
+    const VERSION = '0.6.2';
 
     // ── 存储键 ──
     const S_ENABLED = 'xsact_qa_enabled';
@@ -993,21 +993,21 @@
     function refreshCanvasCache() {
         try {
             var canvas = document.getElementById('MainCanvas') || document.querySelector('canvas');
-            if (!canvas) { _cachedRect = null; return; }
-            _cachedRect = canvas.getBoundingClientRect();
-            _cachedScaleX = _cachedRect.width / BC_CANVAS_W;
-            _cachedScaleY = _cachedRect.height / BC_CANVAS_H;
+            if (!canvas) { state.cachedRect = null; return; }
+            state.cachedRect = canvas.getBoundingClientRect();
+            state.cachedScaleX = state.cachedRect.width / BC_CANVAS_W;
+            state.cachedScaleY = state.cachedRect.height / BC_CANVAS_H;
         } catch (e) { /* ignore */ }
     }
 
     /** BC 画布坐标(2000x1000) → 屏幕像素坐标 */
     function bcToScreen(bcX, bcY) {
-        if (!_cachedRect) return { x: window.innerWidth * 0.25, y: window.innerHeight * 0.25, sx: _cachedScaleX, sy: _cachedScaleY };
+        if (!state.cachedRect) return { x: window.innerWidth * 0.25, y: window.innerHeight * 0.25, sx: state.cachedScaleX, sy: state.cachedScaleY };
         return {
-            x: _cachedRect.left + bcX * _cachedScaleX,
-            y: _cachedRect.top + bcY * _cachedScaleY,
-            sx: _cachedScaleX,
-            sy: _cachedScaleY
+            x: state.cachedRect.left + bcX * state.cachedScaleX,
+            y: state.cachedRect.top + bcY * state.cachedScaleY,
+            sx: state.cachedScaleX,
+            sy: state.cachedScaleY
         };
     }
 
