@@ -2,7 +2,7 @@
 // @name         快捷互动 (QuickInteraction)
 // @name:zh      快捷互动
 // @namespace    https://github.com/heitaoplay/QuickInteraction
-// @version      0.7.2
+// @version      0.7.3
 // @description  Bondage Club - 统一动作操作台。一键进入动作模式，在聊天室场景内直接点人物部位选动作，绕过原生5步嵌套菜单。
 // @author       Tao MUSE
 // @homepageURL  https://github.com/heitaoplay/QuickInteraction
@@ -39,7 +39,7 @@
         console.log.apply(console, args);
     }
 
-    const VERSION = '0.7.2';
+    const VERSION = '0.7.3';
 
     // ── 存储键 ──
     const S_ENABLED = 'xsact_qa_enabled';
@@ -1830,9 +1830,24 @@
     }
 
     function injectStyles() {
-        if (document.getElementById('xsact-qa-styles')) return;
-        var css = document.createElement('style');
-        css.id = 'xsact-qa-styles';
+        // 清理任何残留的旧样式表：历史上多次热注入可能留下了无 id 的 <style>，
+        // 把 #xsact-qa-panel 的 background 写死成字面量，盖过本脚本的主题变量，
+        // 导致主题切换“看似没反应”。凡含本面板选择器且非本脚本样式表的一律移除。
+        try {
+            Array.prototype.forEach.call(document.querySelectorAll('style'), function(s) {
+                if (s.id !== 'xsact-qa-styles' && s.textContent && s.textContent.indexOf('#xsact-qa-panel') !== -1) {
+                    s.parentNode && s.parentNode.removeChild(s);
+                }
+            });
+        } catch (_) {}
+        // 已存在则覆盖内容：避免旧版本残留的样式表（只有 dark-rose 等旧主题名）
+        // 导致新版 data-xsact-theme="dark/light" 匹配不到规则、主题切换失效。
+        var css = document.getElementById('xsact-qa-styles');
+        if (!css) {
+            css = document.createElement('style');
+            css.id = 'xsact-qa-styles';
+            document.head.appendChild(css);
+        }
         css.textContent = [
             buildThemeVarsCSS(),
             /* 统一图标基样式 */
