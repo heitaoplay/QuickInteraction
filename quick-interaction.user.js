@@ -2,7 +2,7 @@
 // @name         快捷互动 (QuickInteraction)
 // @name:zh      快捷互动
 // @namespace    https://github.com/heitaoplay/QuickInteraction
-// @version      0.6.2
+// @version      0.6.3
 // @description  Bondage Club - 统一动作操作台。一键进入动作模式，在聊天室场景内直接点人物部位选动作，绕过原生5步嵌套菜单。
 // @author       Tao MUSE
 // @homepageURL  https://github.com/heitaoplay/QuickInteraction
@@ -39,7 +39,7 @@
         console.log.apply(console, args);
     }
 
-    const VERSION = '0.6.2';
+    const VERSION = '0.6.3';
 
     // ── 存储键 ──
     const S_ENABLED = 'xsact_qa_enabled';
@@ -785,30 +785,30 @@
 
     /** 创建 DOM 切换按钮 */
     function createToggleButton() {
-        if (_toggleBtnEl) return;
-        _toggleBtnEl = document.createElement('button');
-        _toggleBtnEl.id = 'xsact-toggle-btn';
-        _toggleBtnEl.innerHTML =
+        if (state.toggleBtnEl) return;
+        state.toggleBtnEl = document.createElement('button');
+        state.toggleBtnEl.id = 'xsact-toggle-btn';
+        state.toggleBtnEl.innerHTML =
             '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h7l-1 8 10-12h-7z"/></svg>';
-        _toggleBtnEl.title = state.isActive ? '退出快速动作模式' : '开启快速动作模式';
-        _toggleBtnEl.addEventListener('click', function(e) {
+        state.toggleBtnEl.title = state.isActive ? '退出快速动作模式' : '开启快速动作模式';
+        state.toggleBtnEl.addEventListener('click', function(e) {
             e.stopPropagation();
             toggleActionMode();
             updateToggleBtnStyle();
         });
-        document.body.appendChild(_toggleBtnEl);
+        document.body.appendChild(state.toggleBtnEl);
         updateToggleBtnStyle();
     }
 
     /** 更新按钮外观状态 */
     function updateToggleBtnStyle() {
-        if (!_toggleBtnEl) return;
+        if (!state.toggleBtnEl) return;
         if (state.isActive) {
-            _toggleBtnEl.classList.add('active');
-            _toggleBtnEl.title = '退出快速动作模式 · 已激活';
+            state.toggleBtnEl.classList.add('active');
+            state.toggleBtnEl.title = '退出快速动作模式 · 已激活';
         } else {
-            _toggleBtnEl.classList.remove('active');
-            _toggleBtnEl.title = '开启快速动作模式';
+            state.toggleBtnEl.classList.remove('active');
+            state.toggleBtnEl.title = '开启快速动作模式';
         }
     }
 
@@ -2076,7 +2076,7 @@
         // 定时刷新：检测新进入房间的角色（每 3 秒）
         function startRefreshTimer() {
             stopRefreshTimer();
-            _refreshInterval = setInterval(function() {
+            state.refreshInterval = setInterval(function() {
                 if (state.isActive) {
                     var currentCount = state.bodyGrids.size;
                     var layout = getCharLayout();
@@ -2090,7 +2090,7 @@
             }, 3000);
         }
         function stopRefreshTimer() {
-            if (_refreshInterval) { clearInterval(_refreshInterval); _refreshInterval = null; }
+            if (state.refreshInterval) { clearInterval(state.refreshInterval); state.refreshInterval = null; }
         }
 
         // Hook ServerSend: 监听房间进出事件
@@ -2116,8 +2116,8 @@
         refreshCanvasCache(); // 每帧刷新画布矩形缓存（一次即可）
         var layout = getCharLayout();
         // 如果人数变化，重建
-        if (layout.length !== _lastLayoutCount) {
-            _lastLayoutCount = layout.length;
+        if (layout.length !== state.lastLayoutCount) {
+            state.lastLayoutCount = layout.length;
             refreshBodyGrids();
             return;
         }
