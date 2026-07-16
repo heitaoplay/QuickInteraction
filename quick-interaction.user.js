@@ -2,7 +2,7 @@
 // @name         快捷互动 (QuickInteraction)
 // @name:zh      快捷互动
 // @namespace    https://github.com/heitaoplay/QuickInteraction
-// @version      0.6.3
+// @version      0.6.4
 // @description  Bondage Club - 统一动作操作台。一键进入动作模式，在聊天室场景内直接点人物部位选动作，绕过原生5步嵌套菜单。
 // @author       Tao MUSE
 // @homepageURL  https://github.com/heitaoplay/QuickInteraction
@@ -39,7 +39,7 @@
         console.log.apply(console, args);
     }
 
-    const VERSION = '0.6.3';
+    const VERSION = '0.6.4';
 
     // ── 存储键 ──
     const S_ENABLED = 'xsact_qa_enabled';
@@ -2017,13 +2017,16 @@
             console.warn('[XSAct-QA] DrawCharacter 锚点 hook 失败:', e.message);
         }
 
-        // Hook: DrawProcess — 每帧在主聊天界面绘制切换按钮
+        // Hook: DrawProcess — 每帧在主聊天界面确保切换按钮常驻
         state.modApi.hookFunction('DrawProcess', 4, function(args, next) {
             var result = next(args);
             try {
-                if (typeof CurrentScreen !== 'undefined' && CurrentScreen === 'ChatRoom' &&
-                    (typeof CurrentCharacter === 'undefined' || CurrentCharacter === null)) {
-                    drawToggleButton();
+                if (typeof CurrentScreen !== 'undefined') {
+                    if (CurrentScreen === 'ChatRoom') {
+                        drawToggleButton();
+                    } else if (state.toggleBtnEl) {
+                        state.toggleBtnEl.style.display = 'none';
+                    }
                 }
             } catch (_) {}
             return result;
@@ -2215,6 +2218,11 @@
         // 若设置默认开启，且当前在聊天室，自动进入动作模式
         if (state.isActive && typeof CurrentScreen !== 'undefined' && CurrentScreen === 'ChatRoom') {
             try { enterActionMode(); } catch (e) { console.warn('[XSAct-QA] 自动进入动作模式失败:', e); }
+        }
+
+        // 聊天室内确保浮动开关（闪电图标）常驻可见，不依赖进入动作模式
+        if (typeof CurrentScreen !== 'undefined' && CurrentScreen === 'ChatRoom') {
+            try { createToggleButton(); } catch (e) { console.warn('[XSAct-QA] 创建浮动开关失败:', e); }
         }
 
         // 暴露调试/控制接口（无论前面是否出错，必须暴露）
