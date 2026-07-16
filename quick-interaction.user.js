@@ -2,7 +2,7 @@
 // @name         快捷互动 (QuickInteraction)
 // @name:zh      快捷互动
 // @namespace    https://github.com/heitaoplay/QuickInteraction
-// @version      0.7.3
+// @version      0.7.4
 // @description  Bondage Club - 统一动作操作台。一键进入动作模式，在聊天室场景内直接点人物部位选动作，绕过原生5步嵌套菜单。
 // @author       Tao MUSE
 // @homepageURL  https://github.com/heitaoplay/QuickInteraction
@@ -39,7 +39,7 @@
         console.log.apply(console, args);
     }
 
-    const VERSION = '0.7.3';
+    const VERSION = '0.7.4';
 
     // ── 存储键 ──
     const S_ENABLED = 'xsact_qa_enabled';
@@ -361,13 +361,19 @@
         return name;
     }
 
-    /** 检查某个动作在「真实部位」上是否有 BC 字典翻译（避免发送出去后显示乱码） */
+    /** 检查某个动作在「真实部位」上是否有 BC 字典翻译；合成子部位查不到时 fallback 到主部位。
+     *  避免发送出去后显示乱码，也避免子部位的英文动作被误删。 */
     function hasActivityLabel(name, targetGroup) {
         if (!name || !targetGroup) return false;
         if (typeof window.ActivityDictionaryText !== 'function') return true; // 无法判断时放行
-        var k = 'Label-ChatOther-' + targetGroup + '-' + name;
-        var t = window.ActivityDictionaryText(k);
-        return t && t.indexOf('[STRING_RETRIEVAL_FAILED]') === -1 && t.indexOf('MISSING ACTIVITY') === -1;
+        function keyOk(g) {
+            var k = 'Label-ChatOther-' + g + '-' + name;
+            var t = window.ActivityDictionaryText(k);
+            return t && t.indexOf('[STRING_RETRIEVAL_FAILED]') === -1 && t.indexOf('MISSING ACTIVITY') === -1;
+        }
+        if (keyOk(targetGroup)) return true;
+        if (SUBPART_TO_BASE[targetGroup] && keyOk(SUBPART_TO_BASE[targetGroup])) return true;
+        return false;
     }
 
     /**
@@ -458,9 +464,20 @@
      */
     function resolveContentKey(group, name, targetChar) {
         var isSelf = targetChar && Player && targetChar.MemberNumber === Player.MemberNumber;
-        var otherKey = 'ChatOther-' + group + '-' + name;
-        var selfKey = 'ChatSelf-' + group + '-' + name;
-        if (!isSelf) return otherKey;
+        function firstExisting(prefix) {
+            var order = [group];
+            if (SUBPART_TO_BASE[group]) order.push(SUBPART_TO_BASE[group]);
+            if (typeof ActivityDictionaryText !== 'function') return prefix + '-' + order[0] + '-' + name;
+            for (var i = 0; i < order.length; i++) {
+                var k = prefix + '-' + order[i] + '-' + name;
+                var t = ActivityDictionaryText(k);
+                if (t && t.indexOf('MISSING') === -1 && t.indexOf('[STRING_RETRIEVAL_FAILED]') === -1) return k;
+            }
+            return prefix + '-' + order[0] + '-' + name;
+        }
+        if (!isSelf) return firstExisting('ChatOther');
+        var selfKey = firstExisting('ChatSelf');
+        var otherKey = firstExisting('ChatOther');
         if (typeof ActivityDictionaryText !== 'function') return selfKey;
         var selfText = ActivityDictionaryText(selfKey);
         var otherText = ActivityDictionaryText(otherKey);
