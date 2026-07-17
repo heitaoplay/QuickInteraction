@@ -2,7 +2,7 @@
 // @name         快捷互动 (QuickInteraction)
 // @name:zh      快捷互动
 // @namespace    https://github.com/heitaoplay/QuickInteraction
-// @version      0.7.17
+// @version      0.7.18
 // @description  Bondage Club - 统一动作操作台。一键进入动作模式，在聊天室场景内直接点人物部位选动作，绕过原生5步嵌套菜单。
 // @author       Tao MUSE
 // @homepageURL  https://github.com/heitaoplay/QuickInteraction
@@ -39,7 +39,7 @@
         console.log.apply(console, args);
     }
 
-    const VERSION = '0.7.17';
+    const VERSION = '0.7.18';
 
     // ── 存储键 ──
     const S_ENABLED = 'xsact_qa_enabled';
@@ -340,43 +340,50 @@
         return getActivityLabelFallback(name, targetGroup);
     }
 
-    /** 回退翻译：BC Dictionary 查询或去前缀 */
+    /** 回退翻译：BC Dictionary 查询或去前缀；同时查 Label-ChatOther 与 Label-ChatSelf
+     *  （很多"自我动作"如呻吟/呜咽只有 ChatSelf 标签，不能误删）。 */
     function getActivityLabelFallback(name, targetGroup) {
         if (!name) return '';
         if (typeof window.ActivityDictionaryText !== 'function') {
             if (name.indexOf('XSAct_') === 0) return name.substring(6);
             return name;
         }
-        function tryKey(g) {
-            var k = 'Label-ChatOther-' + g + '-' + name;
+        function tryKey(g, prefix) {
+            var k = 'Label-' + prefix + '-' + g + '-' + name;
             var t = window.ActivityDictionaryText(k);
             if (t && t.indexOf('[STRING_RETRIEVAL_FAILED]') === -1 &&
                 t.indexOf('MISSING ACTIVITY') === -1) return t;
             return null;
         }
-        var result = tryKey(targetGroup || '');
+        function tryGroup(g) {
+            return tryKey(g, 'ChatOther') || tryKey(g, 'ChatSelf');
+        }
+        var result = tryGroup(targetGroup || '');
         if (result) return result;
         // 合成子部位 fallback 到主部位字典键
         if (targetGroup && SUBPART_TO_BASE[targetGroup]) {
-            result = tryKey(SUBPART_TO_BASE[targetGroup]);
+            result = tryGroup(SUBPART_TO_BASE[targetGroup]);
             if (result) return result;
         }
         if (name.indexOf('XSAct_') === 0) return name.substring(6);
         return name;
     }
 
-    /** 检查某个动作在「真实部位」上是否有 BC 字典翻译；合成子部位查不到时 fallback 到主部位。
+    /** 检查某个动作在「真实部位」上是否有 BC 字典翻译；同时查 Label-ChatOther 与 Label-ChatSelf。
      *  避免发送出去后显示乱码，也避免子部位的英文动作被误删。 */
     function hasActivityLabel(name, targetGroup) {
         if (!name || !targetGroup) return false;
         if (typeof window.ActivityDictionaryText !== 'function') return true; // 无法判断时放行
-        function keyOk(g) {
-            var k = 'Label-ChatOther-' + g + '-' + name;
+        function keyOk(g, prefix) {
+            var k = 'Label-' + prefix + '-' + g + '-' + name;
             var t = window.ActivityDictionaryText(k);
             return t && t.indexOf('[STRING_RETRIEVAL_FAILED]') === -1 && t.indexOf('MISSING ACTIVITY') === -1;
         }
-        if (keyOk(targetGroup)) return true;
-        if (SUBPART_TO_BASE[targetGroup] && keyOk(SUBPART_TO_BASE[targetGroup])) return true;
+        function groupKeyOk(g) {
+            return keyOk(g, 'ChatOther') || keyOk(g, 'ChatSelf');
+        }
+        if (groupKeyOk(targetGroup)) return true;
+        if (SUBPART_TO_BASE[targetGroup] && groupKeyOk(SUBPART_TO_BASE[targetGroup])) return true;
         return false;
     }
 
@@ -384,9 +391,9 @@
      * 判断一个动作是否应保留在列表中。
      * - 名字里含「MISSING / [STRING_RETRIEVAL_FAILED]」的乱码动作一律丢弃。
      * - ECHO 情绪拓展的中文动作名（如「张开嘴」「流口水」）以及本插件自定义 XSAct_ 动作：
-     *   名字本身就是可读标签，BC 执行时会正常显示，直接放行（不再要求 Label-ChatOther 翻译，
-     *   因为 ECHO 的"自我类"动作往往没注册该键，导致被误删）。
-     * - 其余纯英文动作：仍要求有 Label-ChatOther 翻译，避免聊天消息出现乱码。
+     *   名字本身就是可读标签，BC 执行时会正常显示，直接放行（不再要求 Label-ChatOther 翻译）。
+     * - 其余动作：要求 Label-ChatOther 或 Label-ChatSelf 任一有翻译，避免聊天消息乱码，
+     *   同时让"自我动作"（如呻吟/呜咽）在他人面板上也能显示。
      */
     function shouldKeepAction(name, targetGroup) {
         if (!name) return false;
@@ -463,37 +470,37 @@
         return null;
     }
 
-    /** 根据目标（自己/他人）选择正确的聊天消息翻译键：ChatSelf 或 ChatOther
-     *  对自我动作优先使用 ChatSelf-xxx，缺失时回退 ChatOther；对他人固定 ChatOther。
+    /** 根据目标与动作类型选择正确的聊天消息翻译键：ChatSelf 或 ChatOther。
+     *  对他人优先 ChatOther（玩家对目标做的动作），缺失时回退 ChatSelf（目标自己对自己做的动作，如呻吟/呜咽）。
+     *  对自己优先 ChatSelf，缺失时回退 ChatOther。
      */
     function resolveContentKey(group, name, targetChar) {
         var isSelf = targetChar && Player && targetChar.MemberNumber === Player.MemberNumber;
         function firstExisting(prefix) {
             var order = [group];
             if (SUBPART_TO_BASE[group]) order.push(SUBPART_TO_BASE[group]);
-            if (typeof ActivityDictionaryText !== 'function') return prefix + '-' + order[0] + '-' + name;
+            if (typeof ActivityDictionaryText !== 'function') return null; // 无法判断，让外层 fallback
             for (var i = 0; i < order.length; i++) {
                 var k = prefix + '-' + order[i] + '-' + name;
                 var t = ActivityDictionaryText(k);
                 if (t && t.indexOf('MISSING') === -1 && t.indexOf('[STRING_RETRIEVAL_FAILED]') === -1) return k;
             }
-            return prefix + '-' + order[0] + '-' + name;
+            return null;
         }
-        if (!isSelf) return firstExisting('ChatOther');
-        var selfKey = firstExisting('ChatSelf');
+        if (isSelf) {
+            var selfKey = firstExisting('ChatSelf');
+            var otherKey = firstExisting('ChatOther');
+            return selfKey || otherKey || ('ChatSelf-' + group + '-' + name);
+        }
         var otherKey = firstExisting('ChatOther');
-        if (typeof ActivityDictionaryText !== 'function') return selfKey;
-        var selfText = ActivityDictionaryText(selfKey);
-        var otherText = ActivityDictionaryText(otherKey);
-        var selfMissing = !selfText || selfText.indexOf('MISSING') !== -1;
-        var otherMissing = !otherText || otherText.indexOf('MISSING') !== -1;
-        if (!selfMissing) return selfKey;
-        if (!otherMissing) return otherKey;
-        return selfKey;
+        var selfKey = firstExisting('ChatSelf');
+        return otherKey || selfKey || ('ChatOther-' + group + '-' + name);
     }
 
     /**
      * 构建标准活动包（与 PAT All v3.0 同款格式）。
+     * 若选到的是 ChatSelf 键且目标不是自己（如目标自己呻吟/呜咽），
+     * 则 SourceCharacter 应为目标本人，这样聊天消息才会显示"目标做了某事"。
      * @param {Character} targetChar - 目标角色对象
      * @param {string} group - 部位 Group 名（如 ItemBreast）
      * @param {string} name - 动作原始名（如 ItemBreastCaress）
@@ -501,12 +508,15 @@
      */
     function makeActivityPacket(targetChar, group, name, activityItem) {
         var targetMN = targetChar && targetChar.MemberNumber;
+        var contentKey = resolveContentKey(group, name, targetChar);
+        var isTargetSelf = contentKey.indexOf('ChatSelf-') === 0 &&
+                           !(Player && targetChar && targetChar.MemberNumber === Player.MemberNumber);
         // PAT All 同款：Dictionary 初始不含 ActivityName（最后 push，顺序敏感！）
         var packet = {
-            Content: resolveContentKey(group, name, targetChar),
+            Content: contentKey,
             Type: 'Activity',
             Dictionary: [
-                { SourceCharacter: Player.MemberNumber },
+                { SourceCharacter: isTargetSelf ? targetMN : Player.MemberNumber },
                 { TargetCharacter: targetMN },
                 { Tag: 'FocusAssetGroup', FocusGroupName: group }
             ]
