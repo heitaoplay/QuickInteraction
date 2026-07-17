@@ -2,7 +2,7 @@
 // @name         快捷互动 (QuickInteraction)
 // @name:zh      快捷互动
 // @namespace    https://github.com/heitaoplay/QuickInteraction
-// @version      0.7.19
+// @version      0.7.20
 // @description  Bondage Club - 统一动作操作台。一键进入动作模式，在聊天室场景内直接点人物部位选动作，绕过原生5步嵌套菜单。
 // @author       Tao MUSE
 // @homepageURL  https://github.com/heitaoplay/QuickInteraction
@@ -39,7 +39,7 @@
         console.log.apply(console, args);
     }
 
-    const VERSION = '0.7.19';
+    const VERSION = '0.7.20';
 
     // ── 存储键 ──
     const S_ENABLED = 'xsact_qa_enabled';
@@ -65,6 +65,7 @@
         selectedActionItem: null,     // 当前选中动作绑定的道具
         panelMode: 'part',            // 'part'=单部位 | 'combo'=自定义组合
         showNames: false,             // 是否显示角色名字浮层
+        charListOpen: false,          // 人物列表侧边栏是否展开
         allModeActive: false,         // 全员范围开关
         favModeActive: false,         // 收藏模式开关
         selfModeActive: false,        // 自己模式开关
@@ -1101,8 +1102,9 @@
         try { state.showNames = loadSetting(S_SHOW_NAMES, false); } catch (_) {}
         updateShowNamesButtonVisual();
 
-        // 为每个角色创建身体部位浮动网格
+        // 为每个角色创建身体部位浮动网格，并同步渲染人物列表
         refreshBodyGrids();
+        renderCharList();
         updateAllButtonVisual();
         updateFavButtonVisual();
 
@@ -1142,12 +1144,23 @@
       <button class="xsact-qa-mini-btn" id="xsact-exit-panel-btn" title="退出快速动作模式 (Esc)">' + svgIcon('close', 15) + '</button>\
     </span>\
   </div>\
-  <div class="xsact-qa-mode-tabs">\
-    <button class="xsact-mode-tab active" data-mode="part" title="单部位动作：点人物部位后直接触发">' + svgIcon('target', 14) + '<span>动作</span></button>\
-    <button class="xsact-mode-tab" data-mode="combo" title="组合动作：手动拼装多部位动作并一键执行">' + svgIcon('layers', 14) + '<span>组合动作</span></button>\
-  </div>\
-  <div class="xsact-qa-panel-body" id="xsact-action-list">\
-    <div class="xsact-qa-empty">请先点击人物身上的部位</div>\
+  <div class="xsact-qa-panel-content">\
+    <div class="xsact-char-list" id="xsact-char-list">\
+      <button class="xsact-char-list-toggle" id="xsact-char-list-toggle" title="展开/收起人物列表">' + svgIcon('users', 14) + '<span>人物</span></button>\
+      <div class="xsact-char-list-body" id="xsact-char-list-body">\
+        <div class="xsact-char-list-header">人物列表</div>\
+        <div class="xsact-char-list-items" id="xsact-char-list-items"></div>\
+      </div>\
+    </div>\
+    <div class="xsact-qa-panel-main">\
+      <div class="xsact-qa-mode-tabs">\
+        <button class="xsact-mode-tab active" data-mode="part" title="单部位动作：点人物部位后直接触发">' + svgIcon('target', 14) + '<span>动作</span></button>\
+        <button class="xsact-mode-tab" data-mode="combo" title="组合动作：手动拼装多部位动作并一键执行">' + svgIcon('layers', 14) + '<span>组合动作</span></button>\
+      </div>\
+      <div class="xsact-qa-panel-body" id="xsact-action-list">\
+        <div class="xsact-qa-empty">请在左侧人物列表中选择目标</div>\
+      </div>\
+    </div>\
   </div>\
   <div class="xsact-qa-panel-footer">\
     <button class="xsact-qa-mini-btn xsact-toggle-pill" id="xsact-self-btn" title="切换自己模式：开启后可选中并对自己执行动作">' + svgIcon('user', 14) + '<span>自己</span><span class="xsact-pill-dot"></span></button>\
@@ -1432,6 +1445,7 @@
             createBodyGrid(entry);
             if (state.showNames) createNameOverlay(entry);
         });
+        renderCharList();
     }
 
     /** 当两个角色拥抱/位置严重重叠时，给被遮挡的网格加一个水平偏移，避免线框完全糊在一起。
@@ -1518,7 +1532,90 @@
         });
 
         // 更新右侧面板（按当前模式分派）
+        renderCharList();
         renderPanel();
+    }
+
+    /** 获取当前房间内有效成员（自己受 selfMode 控制） */
+    function getRoomCharacters() {
+        var arr = [];
+        if (typeof ChatRoomCharacter !== 'undefined' && Array.isArray(ChatRoomCharacter)) {
+            ChatRoomCharacter.forEach(function(c) {
+                if (!c || !c.MemberNumber) return;
+                var isSelf = c.IsPlayer && c.IsPlayer();
+                if (isSelf && !state.selfModeActive) return;
+                arr.push(c);
+            });
+        }
+        return arr;
+    }
+
+    /** 从人物列表选中角色：清除已选部位，进入部位选择视图 */
+    function selectCharacterFromList(charObj) {
+        state.selectedTarget = charObj;
+        state.selectedPart = null;
+        state.selectedAction = null;
+        state.selectedActionItem = null;
+        // 同步高亮该角色的身体线框
+        state.bodyGrids.forEach(function(grid, c) {
+            grid.classList.toggle('selected', c.MemberNumber === charObj.MemberNumber);
+            grid.querySelectorAll('.xsact-part-btn').forEach(function(btn) {
+                btn.classList.remove('active');
+            });
+        });
+        renderCharList();
+        renderPanel();
+    }
+
+    /** 渲染人物列表侧边栏 */
+    function renderCharList() {
+        var listEl = state.actionPanelEl && state.actionPanelEl.querySelector('#xsact-char-list-items');
+        if (!listEl) return;
+        var chars = getRoomCharacters();
+        if (chars.length === 0) {
+            listEl.innerHTML = '<div class="xsact-char-list-empty">房间无人</div>';
+            return;
+        }
+        var html = '';
+        chars.forEach(function(c) {
+            var isSelf = c.IsPlayer && c.IsPlayer();
+            var selected = state.selectedTarget && state.selectedTarget.MemberNumber === c.MemberNumber;
+            html += '<div class="xsact-char-list-item' + (selected ? ' selected' : '') + (isSelf ? ' self' : '') + '" data-mn="' + c.MemberNumber + '">' +
+                '<span class="xsact-char-list-name">' + escapeHtml(characterDisplayName(c)) + '</span>' +
+                (isSelf ? '<span class="xsact-char-list-self">自己</span>' : '') +
+                '</div>';
+        });
+        listEl.innerHTML = html;
+        listEl.querySelectorAll('.xsact-char-list-item').forEach(function(item) {
+            item.addEventListener('click', function() {
+                var mn = parseInt(item.dataset.mn, 10);
+                var c = chars.find(function(x) { return x.MemberNumber === mn; });
+                if (c) selectCharacterFromList(c);
+            });
+        });
+    }
+
+    /** 渲染人物部位选择视图 */
+    function renderPartSelection(charObj) {
+        var listEl = state.actionPanelEl.querySelector('#xsact-action-list');
+        var titleEl = state.actionPanelEl.querySelector('#xsact-panel-title');
+        if (!listEl) return;
+        if (titleEl) titleEl.textContent = (characterDisplayName(charObj) || '?') + ' → 选择部位';
+        var html = '<div class="xsact-part-grid">';
+        BODY_PARTS.forEach(function(part) {
+            html += '<button class="xsact-part-tile" data-group="' + part.group + '" title="' + part.group + '">' +
+                '<span class="xsact-part-tile-icon">' + part.icon + '</span>' +
+                '<span class="xsact-part-tile-label">' + escapeHtml(part.label) + '</span>' +
+                '</button>';
+        });
+        html += '</div>';
+        listEl.innerHTML = html;
+        listEl.querySelectorAll('.xsact-part-tile').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                state.selectedPart = btn.dataset.group;
+                renderPanel();
+            });
+        });
     }
 
     // ════════════════════════════════════════════════════════════════════════
@@ -1534,11 +1631,16 @@
             var listEl0 = state.actionPanelEl.querySelector('#xsact-action-list');
             var titleEl0 = state.actionPanelEl.querySelector('#xsact-panel-title');
             if (titleEl0) titleEl0.textContent = (state.panelMode === 'combo') ? '选择人物...' : '选择动作...';
-            if (listEl0) listEl0.innerHTML = '<div class="xsact-qa-empty">请先点击人物身上的部位</div>';
+            if (listEl0) listEl0.innerHTML = '<div class="xsact-qa-empty">请在左侧「人物」列表中选择目标</div>';
             return;
         }
-        if (state.panelMode === 'combo') updateComboPanel(state.selectedTarget);
-        else updateActionPanel(state.selectedTarget, state.selectedPart);
+        if (state.panelMode === 'combo') {
+            updateComboPanel(state.selectedTarget);
+        } else if (!state.selectedPart) {
+            renderPartSelection(state.selectedTarget);
+        } else {
+            updateActionPanel(state.selectedTarget, state.selectedPart);
+        }
     }
 
     /** 切换面板模式（部位 / 自定义组合） */
@@ -1955,6 +2057,16 @@
             tab.addEventListener('click', function() { setPanelMode(tab.dataset.mode); });
         });
 
+        // 人物列表侧边栏展开/收起按钮
+        var charListToggle = panel.querySelector('#xsact-char-list-toggle');
+        var charList = panel.querySelector('#xsact-char-list');
+        if (charListToggle && charList) {
+            charListToggle.addEventListener('click', function() {
+                state.charListOpen = !state.charListOpen;
+                charList.classList.toggle('open', state.charListOpen);
+            });
+        }
+
         // 全员执行按钮：切换全员范围开关
         var allBtn = panel.querySelector('#xsact-all-btn');
         if (allBtn) allBtn.addEventListener('click', toggleAllMode);
@@ -2313,6 +2425,102 @@
             '#xsact-self-btn.on .xsact-pill-dot{background:#46E0A0;border-color:#46E0A0;box-shadow:0 0 8px rgba(70,224,160,0.7);}',
             '#xsact-fav-clear-btn{padding:0;width:28px;height:28px;color:var(--xs-text-dim);}',
             '#xsact-fav-clear-btn:hover{background:rgba(255,92,92,0.12);border-color:rgba(255,92,92,0.5);color:#FFB3B3;}',
+
+            /* ===== 人物列表侧边栏 ===== */
+            '.xsact-qa-panel-content{',
+            '  flex:1;display:flex;overflow:hidden;min-height:0;',
+            '}',
+            '.xsact-qa-panel-main{',
+            '  flex:1;display:flex;flex-direction:column;min-width:0;',
+            '}',
+            '.xsact-char-list{',
+            '  display:flex;flex-direction:row;',
+            '  width:32px;min-width:32px;',
+            '  border-right:1px solid var(--xs-border);',
+            '  overflow:hidden;transition:width .22s ease;',
+            '}',
+            '.xsact-char-list.open{',
+            '  width:140px;',
+            '}',
+            '.xsact-char-list-toggle{',
+            '  width:32px;min-width:32px;',
+            '  padding:8px 0;',
+            '  background:var(--xs-btn-bg);border:none;border-right:1px solid var(--xs-border);',
+            '  color:var(--xs-text-dim);font-size:12px;cursor:pointer;',
+            '  display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:6px;',
+            '  transition:background .15s,color .15s;',
+            '}',
+            '.xsact-char-list-toggle:hover{',
+            '  background:var(--xs-hover);color:var(--xs-text);',
+            '}',
+            '.xsact-char-list-toggle .xsact-ico{width:14px;height:14px;stroke-width:2.2px;}',
+            '.xsact-char-list-toggle span{',
+            '  writing-mode:vertical-rl;letter-spacing:2px;margin-top:4px;',
+            '}',
+            '.xsact-char-list-body{',
+            '  flex:1;display:flex;flex-direction:column;',
+            '  min-width:0;overflow:hidden;',
+            '}',
+            '.xsact-char-list-header{',
+            '  padding:8px 10px;font-size:12px;font-weight:600;',
+            '  color:var(--xs-text-dim);border-bottom:1px solid var(--xs-border);',
+            '  white-space:nowrap;',
+            '}',
+            '.xsact-char-list-items{',
+            '  flex:1;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--xs-scroll) transparent;',
+            '}',
+            '.xsact-char-list-items::-webkit-scrollbar{width:4px;}',
+            '.xsact-char-list-items::-webkit-scrollbar-track{background:transparent;}',
+            '.xsact-char-list-items::-webkit-scrollbar-thumb{background:var(--xs-scroll);border-radius:2px;}',
+            '.xsact-char-list-empty{',
+            '  padding:14px 10px;font-size:12px;color:var(--xs-text-faint);text-align:center;',
+            '}',
+            '.xsact-char-list-item{',
+            '  padding:9px 10px;cursor:pointer;',
+            '  display:flex;align-items:center;gap:6px;',
+            '  border-bottom:1px solid rgba(0,0,0,0);',
+            '  transition:background .12s,color .12s;',
+            '  font-size:12px;color:var(--xs-text-dim);',
+            '}',
+            '.xsact-char-list-item:hover{',
+            '  background:var(--xs-hover);color:var(--xs-text);',
+            '}',
+            '.xsact-char-list-item.selected{',
+            '  background:rgb(var(--xs-accent-rgb) / 0.14);color:var(--xs-accent-text);',
+            '}',
+            '.xsact-char-list-item.self{',
+            '  color:#46E0A0;',
+            '}',
+            '.xsact-char-list-item.self.selected{',
+            '  background:rgba(70,224,160,0.14);color:#46E0A0;',
+            '}',
+            '.xsact-char-list-name{',
+            '  flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;',
+            '}',
+            '.xsact-char-list-self{',
+            '  flex-shrink:0;font-size:9px;padding:1px 4px;border-radius:4px;',
+            '  background:rgba(70,224,160,0.15);color:#46E0A0;',
+            '}',
+
+            /* ===== 人物部位选择网格 ===== */
+            '.xsact-part-grid{',
+            '  grid-column:1 / -1;',
+            '  display:grid;grid-template-columns:repeat(auto-fill, minmax(70px, 1fr));gap:7px;',
+            '  padding:4px 2px;',
+            '}',
+            '.xsact-part-tile{',
+            '  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;',
+            '  padding:10px 6px;min-height:68px;',
+            '  background:var(--xs-panel-bg-2);border:1px solid var(--xs-border);border-radius:9px;',
+            '  cursor:pointer;color:var(--xs-text-dim);',
+            '  transition:background .15s,border-color .15s,color .15s,box-shadow .15s;',
+            '}',
+            '.xsact-part-tile:hover{',
+            '  background:var(--xs-hover);border-color:var(--xs-border-strong);color:var(--xs-text);',
+            '  box-shadow:0 0 12px rgb(var(--xs-accent-rgb) / 0.12);',
+            '}',
+            '.xsact-part-tile-icon{font-size:18px;line-height:1;}',
+            '.xsact-part-tile-label{font-size:11px;white-space:nowrap;}',
 
             /* 预设栏 */
             '.xsact-qa-panel-body.fav-active .xsact-action-btn:hover{',
