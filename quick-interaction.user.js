@@ -2,7 +2,7 @@
 // @name         快捷互动 (QuickInteraction)
 // @name:zh      快捷互动
 // @namespace    https://github.com/heitaoplay/QuickInteraction
-// @version      0.7.6
+// @version      0.7.7
 // @description  Bondage Club - 统一动作操作台。一键进入动作模式，在聊天室场景内直接点人物部位选动作，绕过原生5步嵌套菜单。
 // @author       Tao MUSE
 // @homepageURL  https://github.com/heitaoplay/QuickInteraction
@@ -39,7 +39,7 @@
         console.log.apply(console, args);
     }
 
-    const VERSION = '0.7.6';
+    const VERSION = '0.7.7';
 
     // ── 存储键 ──
     const S_ENABLED = 'xsact_qa_enabled';
@@ -1255,8 +1255,13 @@
     function positionNameOverlay(overlay, entry) {
         var rect = getGridScreenRect(entry);
         var labelHeight = overlay.offsetHeight || 24;
-        // 默认对齐到游戏原生名字位置：角色头顶上方
-        var top = rect.top - labelHeight - 6;
+        // 对齐 BC 原版名字基线：原版名字绘制在角色头顶（rect.top）附近，
+        // 房间人数 > 5 时再上移 4px（Drawing.js 的 NameOffset）。
+        // 把标签底部贴到这条基线，使我们的标签直接盖住原版名字。
+        var roomBig = (typeof ChatRoomCharacter !== 'undefined' && ChatRoomCharacter.length > 5);
+        var nameOffset = roomBig ? -4 : 0;
+        var baseline = rect.top + nameOffset;
+        var top = baseline - labelHeight;
         // 若上方超出视口，则 fallback 到角色下方
         if (top < 8) {
             top = rect.bottom + 6;
