@@ -2,12 +2,12 @@
 // @name         快捷互动 Loader (QuickInteraction Loader)
 // @name:zh      快捷互动 Loader
 // @namespace    https://github.com/heitaoplay/QuickInteraction
-// @version      1.0.0
+// @version      1.0.1
 // @description  BC 快捷互动的极简加载器。真正的脚本代码托管在 GitHub，每次刷新页面都会自动拉取最新版，无需在油猴里手动点「更新」。
 // @author       Tao MUSE
 // @homepageURL  https://github.com/heitaoplay/QuickInteraction
-// @updateURL    https://raw.githubusercontent.com/heitaoplay/QuickInteraction/raw/main/loader.user.js
-// @downloadURL  https://raw.githubusercontent.com/heitaoplay/QuickInteraction/raw/main/loader.user.js
+// @updateURL    https://raw.githubusercontent.com/heitaoplay/QuickInteraction/main/loader.user.js
+// @downloadURL  https://raw.githubusercontent.com/heitaoplay/QuickInteraction/main/loader.user.js
 // @include      /^https:\/\/(www\.)?bondage(projects\.elementfx|-(europe|asia))\.com\/.*/
 // @grant        none
 // @require      https://awdrrawd.github.io/liko-Plugin-Repository/Plugins/expand/bcmodsdk.js
@@ -33,7 +33,7 @@
     'use strict';
 
     // 真正的主脚本地址（与仓库 @downloadURL 保持一致）
-    var MAIN_URL = 'https://raw.githubusercontent.com/heitaoplay/QuickInteraction/raw/main/quick-interaction.user.js';
+    var MAIN_URL = 'https://raw.githubusercontent.com/heitaoplay/QuickInteraction/main/quick-interaction.user.js';
 
     // bcModSdk 由 @require 注入，确保挂到 window 上供主脚本使用
     if (typeof bcModSdk !== 'undefined') {
