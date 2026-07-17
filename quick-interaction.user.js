@@ -2,7 +2,7 @@
 // @name         快捷互动 (QuickInteraction)
 // @name:zh      快捷互动
 // @namespace    https://github.com/heitaoplay/QuickInteraction
-// @version      0.7.10
+// @version      0.7.11
 // @description  Bondage Club - 统一动作操作台。一键进入动作模式，在聊天室场景内直接点人物部位选动作，绕过原生5步嵌套菜单。
 // @author       Tao MUSE
 // @homepageURL  https://github.com/heitaoplay/QuickInteraction
@@ -39,7 +39,7 @@
         console.log.apply(console, args);
     }
 
-    const VERSION = '0.7.10';
+    const VERSION = '0.7.11';
 
     // ── 存储键 ──
     const S_ENABLED = 'xsact_qa_enabled';
@@ -47,11 +47,11 @@
     const S_PRESETS = 'xsact_qa_presets';
     const S_LAST = 'xsact_qa_last_action';
     const S_COMBOS = 'xsact_qa_combos';
-    const S_SHORTCUTS = 'xsact_qa_shortcuts';
     const S_POS = 'xsact_qa_panel_pos';
     const S_SIZE = 'xsact_qa_panel_size';
     const S_MODE = 'xsact_qa_panel_mode';
     const S_SELF = 'xsact_qa_self_mode';
+    const S_SHOW_NAMES = 'xsact_qa_show_names';
     const S_TOGGLE_POS = 'xsact_qa_toggle_pos';
 
     // ── 集中状态（单一数据源，消除散落全局变量）──
@@ -63,8 +63,8 @@
         selectedPart: null,           // 当前选中部位 ItemGroup
         selectedAction: null,         // 当前选中动作名
         selectedActionItem: null,     // 当前选中动作绑定的道具
-        panelMode: 'part',            // 'part'=单部位 | 'shortcut'=快捷动作 | 'combo'=自定义组合
-        shortcuts: [],                 // 快捷动作 {id,name,label,group}
+        panelMode: 'part',            // 'part'=单部位 | 'combo'=自定义组合
+        showNames: false,             // 是否显示角色名字浮层
         allModeActive: false,         // 全员范围开关
         favModeActive: false,         // 收藏模式开关
         selfModeActive: false,        // 自己模式开关
@@ -898,6 +898,21 @@
         if (btn) btn.classList.toggle('on', state.selfModeActive);
     }
 
+    /** 切换「名字显示」开关：开启后在角色上方显示名字浮层 */
+    function toggleShowNames() {
+        state.showNames = !state.showNames;
+        persist(S_SHOW_NAMES, state.showNames);
+        updateShowNamesButtonVisual();
+        if (state.isActive) refreshBodyGrids();
+        toast(state.showNames ? '名字显示：开启' : '名字显示：关闭',
+              state.showNames ? '#46E0A0' : '#888');
+    }
+    function updateShowNamesButtonVisual() {
+        if (!state.actionPanelEl) return;
+        var btn = state.actionPanelEl.querySelector('#xsact-names-btn');
+        if (btn) btn.classList.toggle('on', state.showNames);
+    }
+
     /** 清空全部收藏动作 */
     function clearAllFavorites() {
         if (!Array.isArray(state.favorites) || state.favorites.length === 0) { toast('当前没有收藏动作', '#888'); return; }
@@ -1114,9 +1129,8 @@
         }
         // 恢复上次使用的模式（首次无记录则默认「单部位」）
         var savedMode = loadSetting(S_MODE, 'part');
-        if (!/^(part|shortcut|combo)$/.test(savedMode)) savedMode = 'part';
+        if (!/^(part|combo)$/.test(savedMode)) savedMode = 'part';
         state.panelMode = savedMode;
-        try { state.shortcuts = loadSetting(S_SHORTCUTS, []) || []; } catch (_) { state.shortcuts = []; }
         state.actionPanelEl.querySelectorAll('.xsact-mode-tab').forEach(function(tab) {
             tab.classList.toggle('active', tab.dataset.mode === state.panelMode);
         });
@@ -1128,6 +1142,10 @@
         // 恢复自己模式开关状态
         try { state.selfModeActive = loadSetting(S_SELF, false); } catch (_) {}
         updateSelfButtonVisual();
+
+        // 恢复名字显示开关状态（新装默认关闭）
+        try { state.showNames = loadSetting(S_SHOW_NAMES, false); } catch (_) {}
+        updateShowNamesButtonVisual();
 
         // 为每个角色创建身体部位浮动网格
         refreshBodyGrids();
@@ -1172,7 +1190,6 @@
   </div>\
   <div class="xsact-qa-mode-tabs">\
     <button class="xsact-mode-tab active" data-mode="part" title="单部位动作：点人物部位后直接触发">' + svgIcon('target', 14) + '<span>动作</span></button>\
-    <button class="xsact-mode-tab" data-mode="shortcut" title="快捷动作：自定义部位+动作，一键执行">' + svgIcon('zap', 14) + '<span>快捷动作</span></button>\
     <button class="xsact-mode-tab" data-mode="combo" title="组合动作：手动拼装多部位动作并一键执行">' + svgIcon('layers', 14) + '<span>组合动作</span></button>\
   </div>\
   <div class="xsact-qa-panel-body" id="xsact-action-list">\
@@ -1180,6 +1197,7 @@
   </div>\
   <div class="xsact-qa-panel-footer">\
     <button class="xsact-qa-mini-btn xsact-toggle-pill" id="xsact-self-btn" title="切换自己模式：开启后可选中并对自己执行动作">' + svgIcon('user', 14) + '<span>自己</span><span class="xsact-pill-dot"></span></button>\
+    <button class="xsact-qa-mini-btn xsact-toggle-pill" id="xsact-names-btn" title="切换名字显示：开启后在角色上方显示名字浮层">' + svgIcon('tag', 14) + '<span>名字</span><span class="xsact-pill-dot"></span></button>\
     <button class="xsact-qa-mini-btn xsact-toggle-pill" id="xsact-all-btn" title="切换全员范围：开启后，动作将对房间内所有人执行">' + svgIcon('users', 14) + '<span>全员</span><span class="xsact-pill-dot"></span></button>\
     <button class="xsact-qa-mini-btn xsact-toggle-pill" id="xsact-fav-btn" title="收藏模式：开启后点击动作会加入/取消收藏">' + svgIcon('star', 14) + '<span>收藏</span><span class="xsact-pill-dot"></span></button>\
     <button class="xsact-qa-mini-btn" id="xsact-fav-clear-btn" title="清空全部收藏动作">' + svgIcon('trash', 14) + '</button>\
@@ -1401,6 +1419,7 @@
         overlay.className = 'xsact-name-overlay' + (charObj.IsPlayer && charObj.IsPlayer() ? ' self' : '');
         overlay.textContent = characterDisplayName(charObj);
         overlay.dataset.mn = charObj.MemberNumber;
+        overlay.style.display = state.showNames ? '' : 'none';
         layer.appendChild(overlay);
         state.nameOverlays.set(charObj, overlay);
         positionNameOverlay(overlay, entry);
@@ -1451,12 +1470,14 @@
             if (isPlayer && !state.selfModeActive) return; // 未开启自己模式时跳过自己
             entry.overlapShift = shifts.get(entry.char.MemberNumber) || 0;
             createBodyGrid(entry);
-            createNameOverlay(entry);
+            if (state.showNames) createNameOverlay(entry);
         });
     }
 
     /** 当两个角色拥抱/位置重叠时，给被遮挡的网格加一个水平偏移，让线框不完全糊在一起。
-     *  按角色水平顺序，若后者与前者重叠面积超过较小网格的 25%，则向右推开直到留出间距。 */
+     *  按角色水平顺序，若后者与前者重叠面积超过较小网格的 25%，则向右推开直到留出间距。
+     *  不再限制最大偏移量，确保拥抱这种几乎完全重叠的情况也能明显分开；
+     *  但会把偏移限制在屏幕右边界内，避免推出可视区域。 */
     function computeOverlapShifts(layout) {
         var shifts = new Map();
         if (!layout || layout.length < 2) return shifts;
@@ -1465,6 +1486,7 @@
             return { entry: entry, rect: getGridScreenRect(entry), mn: entry.char.MemberNumber };
         });
         rects.sort(function(a, b) { return a.rect.left - b.rect.left; });
+        var screenW = window.innerWidth || 1920;
 
         for (var i = 1; i < rects.length; i++) {
             var cur = rects[i];
@@ -1473,16 +1495,19 @@
                 var prev = rects[j];
                 var prevShift = shifts.get(prev.mn) || 0;
                 if (rectsOverlap(prev.rect, cur.rect, 0.25)) {
-                    var desired = prev.rect.left + prevShift + prev.rect.width + 12; // 12px 间距
+                    var desired = prev.rect.left + prevShift + prev.rect.width + 24; // 24px 间距
                     var need = desired - cur.rect.left;
                     if (need > curShift) curShift = need;
                 }
             }
             if (curShift > 0) {
-                // 限制最大偏移，避免推到屏幕外太远；最多推开半个网格宽度或 80px 取较大值
-                var maxShift = Math.max(cur.rect.width * 0.5, 80);
-                curShift = Math.min(curShift, maxShift);
-                shifts.set(cur.mn, curShift);
+                // 限制在屏幕右边界内，避免推出可视区域
+                var maxRight = screenW - 24;
+                var desiredRight = cur.rect.left + curShift + cur.rect.width;
+                if (desiredRight > maxRight) {
+                    curShift = Math.max(0, maxRight - cur.rect.left - cur.rect.width);
+                }
+                if (curShift > 0) shifts.set(cur.mn, curShift);
             }
         }
         return shifts;
@@ -1546,13 +1571,12 @@
             return;
         }
         if (state.panelMode === 'combo') updateComboPanel(state.selectedTarget);
-        else if (state.panelMode === 'shortcut') updateShortcutPanel();
         else updateActionPanel(state.selectedTarget, state.selectedPart);
     }
 
-    /** 切换面板模式（部位 / 快捷动作 / 自定义组合） */
+    /** 切换面板模式（部位 / 自定义组合） */
     function setPanelMode(mode) {
-        if (!/^(part|shortcut|combo)$/.test(mode)) return;
+        if (!/^(part|combo)$/.test(mode)) return;
         state.panelMode = mode;
         persist(S_MODE, mode);
         if (state.actionPanelEl) {
@@ -1571,10 +1595,6 @@
             try { state.combos = loadSetting(S_COMBOS, []); } catch (_) {}
             updateComboPanel(state.selectedTarget);
             toast('组合列表已刷新', '#FF5C7A');
-        } else if (state.panelMode === 'shortcut') {
-            try { state.shortcuts = loadSetting(S_SHORTCUTS, []) || []; } catch (_) { state.shortcuts = []; }
-            updateShortcutPanel();
-            toast('快捷动作已刷新', '#FF5C7A');
         } else {
             // 重新渲染当前部位动作列表（ActivityAllowedForGroup 会实时重新计算）
             updateActionPanel(state.selectedTarget, state.selectedPart);
@@ -1726,108 +1746,6 @@
         });
     }
 
-    /** 快捷动作面板：用户自定义部位+动作，一键执行 */
-    function updateShortcutPanel() {
-        if (!state.actionPanelEl) return;
-        var titleEl = state.actionPanelEl.querySelector('#xsact-panel-title');
-        var listEl = state.actionPanelEl.querySelector('#xsact-action-list');
-        var allBtn = state.actionPanelEl.querySelector('#xsact-all-btn');
-        if (!titleEl || !listEl) return;
-
-        titleEl.textContent = '快捷动作';
-        if (allBtn) allBtn.disabled = !state.selectedTarget;
-
-        var html = '';
-        if (!state.shortcuts || state.shortcuts.length === 0) {
-            html = '<div class="xsact-qa-empty">暂无快捷动作。点击下方「添加快捷动作」添加。</div>';
-        } else {
-            html = '<div class="xsact-shortcut-list">';
-            state.shortcuts.forEach(function(sc) {
-                var partLbl = (BODY_PARTS.find(function(p) { return p.group === sc.group; }) || {}).label || sc.group;
-                html += '<div class="xsact-shortcut-card" data-id="' + sc.id + '">' +
-                    '<div class="xsact-shortcut-info">' +
-                    '<span class="xsact-shortcut-name">' + escapeHtml(sc.label || sc.name) + '</span>' +
-                    '<span class="xsact-shortcut-part">' + escapeHtml(partLbl) + '</span>' +
-                    '</div>' +
-                    '<div class="xsact-shortcut-btns">' +
-                    '<button class="xsact-shortcut-run" title="执行">' + svgIcon('play', 14) + '</button>' +
-                    '<button class="xsact-shortcut-delete" title="删除">' + svgIcon('trash', 14) + '</button>' +
-                    '</div>' +
-                    '</div>';
-            });
-            html += '</div>';
-        }
-        html += '<button class="xsact-combo-new-btn" id="xsact-new-shortcut-btn">' + svgIcon('plus', 15) + '添加快捷动作</button>';
-        listEl.innerHTML = html;
-
-        listEl.querySelectorAll('.xsact-shortcut-run').forEach(function(btn) {
-            btn.addEventListener('click', function(e) {
-                e.stopPropagation();
-                var id = btn.closest('.xsact-shortcut-card').dataset.id;
-                var sc = state.shortcuts.find(function(s) { return s.id === id; });
-                if (!sc || !state.selectedTarget) { toast('请先选择一个人物', '#FF5C7A'); return; }
-                executeAction(state.selectedTarget, sc.name, null, sc.group);
-                toast('已执行：' + (sc.label || sc.name), '#46E0A0');
-            });
-        });
-        listEl.querySelectorAll('.xsact-shortcut-delete').forEach(function(btn) {
-            btn.addEventListener('click', function(e) {
-                e.stopPropagation();
-                var id = btn.closest('.xsact-shortcut-card').dataset.id;
-                if (confirm('确定删除这个快捷动作吗？')) { deleteShortcut(id); updateShortcutPanel(); }
-            });
-        });
-        var newBtn = listEl.querySelector('#xsact-new-shortcut-btn');
-        if (newBtn) newBtn.addEventListener('click', function() { showShortcutEditor(); });
-    }
-
-    /** 弹出快捷动作编辑对话框 */
-    function showShortcutEditor(shortcut) {
-        var listEl = state.actionPanelEl && state.actionPanelEl.querySelector('#xsact-action-list');
-        if (!listEl) return;
-        var isEdit = !!shortcut;
-        var html = '<div class="xsact-combo-editor">' +
-            '<div class="xsact-combo-field"><label>动作名（Activity Name）</label><input type="text" id="xsact-shortcut-name" value="' + escapeHtml(isEdit ? shortcut.name : '') + '" placeholder="例如：躺上去"></div>' +
-            '<div class="xsact-combo-field"><label>显示名称</label><input type="text" id="xsact-shortcut-label" value="' + escapeHtml(isEdit ? (shortcut.label || shortcut.name) : '') + '" placeholder="例如：躺上去（可选）"></div>' +
-            '<div class="xsact-combo-field"><label>部位 Group</label><select id="xsact-shortcut-group">';
-        BODY_PARTS.forEach(function(p) {
-            html += '<option value="' + p.group + '"' + (isEdit && shortcut.group === p.group ? ' selected' : '') + '>' + escapeHtml(p.label) + ' (' + p.group + ')</option>';
-        });
-        html += '</select></div>' +
-            '<div class="xsact-combo-actions">' +
-            '<button class="xsact-combo-save-btn" id="xsact-shortcut-save">' + (isEdit ? '保存' : '添加') + '</button>' +
-            '<button class="xsact-combo-cancel-btn" id="xsact-shortcut-cancel">取消</button>' +
-            '</div>' +
-            '</div>';
-        listEl.innerHTML = html;
-
-        var saveBtn = listEl.querySelector('#xsact-shortcut-save');
-        var cancelBtn = listEl.querySelector('#xsact-shortcut-cancel');
-        if (saveBtn) saveBtn.addEventListener('click', function() {
-            var name = String(listEl.querySelector('#xsact-shortcut-name').value || '').trim();
-            var label = String(listEl.querySelector('#xsact-shortcut-label').value || '').trim() || name;
-            var group = String(listEl.querySelector('#xsact-shortcut-group').value || '').trim();
-            if (!name || !group) { toast('动作名和部位不能为空', '#FF5C5C'); return; }
-            if (isEdit) { shortcut.name = name; shortcut.label = label; shortcut.group = group; saveShortcuts(); }
-            else { addShortcut(name, label, group); }
-            updateShortcutPanel();
-            toast('快捷动作已保存', '#46E0A0');
-        });
-        if (cancelBtn) cancelBtn.addEventListener('click', function() { updateShortcutPanel(); });
-    }
-
-    function addShortcut(name, label, group) {
-        state.shortcuts.push({ id: 'sc_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7), name: name, label: label || name, group: group });
-        saveShortcuts();
-    }
-    function deleteShortcut(id) {
-        state.shortcuts = state.shortcuts.filter(function(s) { return s.id !== id; });
-        saveShortcuts();
-    }
-    function saveShortcuts() {
-        try { persist(S_SHORTCUTS, state.shortcuts); } catch (e) { console.error('[XSAct-QA] 保存快捷动作失败:', e); }
-    }
-
     function escapeHtml(s) {
         return String(s || '').replace(/[&<>"']/g, function(m) {
             return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[m];
@@ -1854,6 +1772,7 @@
             resize:   '<path d="M22 2L2 22M16 22h6v-6"/>',
             users:    '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
             target:   '<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/>',
+            tag:      '<path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><circle cx="7" cy="7" r="1.5"/>',
             zap:      '<polygon points="13 2 4 14 11 14 10 22 20 10 13 10"/>',
             layers:   '<path d="M12 3L2 9l10 6 10-6-10-6z"/><path d="M2 15l10 6 10-6"/>',
             user:     '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
@@ -2076,6 +1995,10 @@
         // 自己模式按钮
         var selfBtn = panel.querySelector('#xsact-self-btn');
         if (selfBtn) selfBtn.addEventListener('click', toggleSelfMode);
+
+        // 名字显示按钮
+        var namesBtn = panel.querySelector('#xsact-names-btn');
+        if (namesBtn) namesBtn.addEventListener('click', toggleShowNames);
 
         // ×3 连打
         var x3Btn = panel.querySelector('#xsact-x3-btn');
@@ -2349,26 +2272,6 @@
             '.xsact-combo-edit:hover{background:rgba(70,224,160,0.16);border-color:#46E0A0;color:#CFFAE8;}',
             '.xsact-combo-delete:hover{background:rgba(255,92,92,0.16);border-color:#FF5C5C;color:#FFB3B3;}',
 
-            /* 快捷动作卡片 */
-            '.xsact-shortcut-card{',
-            '  grid-column:1 / -1;',
-            '  display:flex;justify-content:space-between;align-items:center;',
-            '  padding:11px 12px;margin-bottom:7px;',
-            '  background:var(--xs-panel-bg-2);border:1px solid var(--xs-border);',
-            '  border-radius:9px;color:var(--xs-text-dim);',
-            '  animation:xsact-fade-in .22s ease both;',
-            '}',
-            '.xsact-shortcut-info{display:flex;flex-direction:column;gap:2px;min-width:0;}',
-            '.xsact-shortcut-name{font-size:13px;font-weight:600;color:var(--xs-text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
-            '.xsact-shortcut-part{font-size:11px;color:var(--xs-text-faint);}',
-            '.xsact-shortcut-btns{display:flex;gap:6px;}',
-            '.xsact-shortcut-btns button{',
-            '  width:30px;height:30px;border-radius:7px;cursor:pointer;',
-            '  background:var(--xs-btn-bg);border:1px solid var(--xs-border-strong);',
-            '  color:var(--xs-text-dim);display:flex;align-items:center;justify-content:center;transition:all 0.15s ease;',
-            '}',
-            '.xsact-shortcut-run:hover{background:rgb(var(--xs-accent-rgb) / 0.18);border-color:var(--xs-accent);color:var(--xs-accent-text);}',
-            '.xsact-shortcut-delete:hover{background:rgba(255,92,92,0.16);border-color:#FF5C5C;color:#FFB3B3;}',
             '.xsact-combo-new-btn{',
             '  grid-column:1 / -1;',
             '  width:100%;padding:10px;margin-top:7px;',
@@ -2674,6 +2577,7 @@
         layout.forEach(function(entry) {
             var grid = state.bodyGrids.get(entry.char);
             if (grid) positionGrid(grid, entry);
+            if (state.showNames && !state.nameOverlays.has(entry.char)) createNameOverlay(entry);
             var overlay = state.nameOverlays.get(entry.char);
             if (overlay) positionNameOverlay(overlay, entry);
         });
@@ -2752,7 +2656,7 @@
         try { state.presets = loadSetting(S_PRESETS, []); } catch (_) {}
         try { state.lastAction = loadStorage(S_LAST, null); } catch (_) {}
         try { state.combos = loadSetting(S_COMBOS, []); } catch (_) {}
-        try { state.shortcuts = loadSetting(S_SHORTCUTS, []) || []; } catch (_) {} // 快捷动作
+        try { state.showNames = loadSetting(S_SHOW_NAMES, false); } catch (_) {}
 
         // 恢复主题设置（优先读游戏账号，回退本地）
         try { state.theme = loadSetting(S_THEME, 'dark'); } catch (_) {}
@@ -2795,9 +2699,6 @@
             stopEditCombo: stopEditCombo,
             runCombo: runComboOnTarget,
             runComboAll: runComboAll,
-            addShortcut: addShortcut,
-            deleteShortcut: deleteShortcut,
-            getShortcuts: function() { return state.shortcuts.slice(); },
             isActive: function() { return state.isActive; },
             get panelMode() { return state.panelMode; },
             get allModeActive() { return state.allModeActive; },
