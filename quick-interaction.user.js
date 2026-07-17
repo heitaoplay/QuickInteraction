@@ -2,7 +2,7 @@
 // @name         快捷互动 (QuickInteraction)
 // @name:zh      快捷互动
 // @namespace    https://github.com/heitaoplay/QuickInteraction
-// @version      0.7.12
+// @version      0.7.13
 // @description  Bondage Club - 统一动作操作台。一键进入动作模式，在聊天室场景内直接点人物部位选动作，绕过原生5步嵌套菜单。
 // @author       Tao MUSE
 // @homepageURL  https://github.com/heitaoplay/QuickInteraction
@@ -39,7 +39,7 @@
         console.log.apply(console, args);
     }
 
-    const VERSION = '0.7.12';
+    const VERSION = '0.7.13';
 
     // ── 存储键 ──
     const S_ENABLED = 'xsact_qa_enabled';
@@ -1248,21 +1248,26 @@
                 });
             }
 
-            // 合并：优先用稳定槽位坐标（loopMap），anchor 只在合理范围内才覆盖
+            // 合并：横坐标跟真实绘制位置（追踪拥抱等位移动作），纵坐标固定用槽位稳定坐标，
+            // 避免拥抱时线框被带得上上下下，保持“高度不变”
             ChatRoomCharacter.forEach(function(c) {
                 if (!c || c.MemberNumber == null || !memberMNs[c.MemberNumber]) return;
                 var loop = loopMap[c.MemberNumber];
                 var anchor = anchorMap[c.MemberNumber];
-                var pos = loop || anchor;
+                if (!loop && !anchor) return;
+                var useX = loop, useY = loop;
                 var anchorOk = anchor && anchor.y >= -60 && anchor.y <= 1060;
-                if (anchorOk && loop &&
-                    Math.abs(anchor.x - loop.x) <= 350 &&
-                    Math.abs(anchor.y - loop.y) <= 350) {
-                    pos = anchor;
-                } else if (anchorOk && !loop) {
-                    pos = anchor;
+                if (anchorOk) {
+                    // 横坐标：只要水平位移不离谱，就跟随真实绘制位置
+                    if (!loop || Math.abs(anchor.x - loop.x) <= 350) {
+                        useX = anchor;
+                    }
+                    // 纵坐标：始终优先稳定槽位，缺失才 fallback
+                    if (!loop) {
+                        useY = anchor;
+                    }
                 }
-                if (pos) layout.push({ char: c, x: pos.x, y: pos.y, zoom: pos.zoom, src: (pos === anchor) ? 'anchor' : 'loop' });
+                layout.push({ char: c, x: useX.x, y: useY.y, zoom: (useX === anchor ? anchor.zoom : (loop ? loop.zoom : 1)), src: (useX === anchor) ? 'anchor' : 'loop' });
             });
         } catch (e) {
             console.warn('[XSAct-QA] getCharLayout 失败:', e);
@@ -1484,40 +1489,40 @@
         });
     }
 
-    /** 当两个角色拥抱/位置严重重叠时，给被遮挡的网格加一个极小幅水平偏移，避免线框完全糊在一起。
-     *  规则：只在同一排、重叠面积超过 55% 时才推开；最大偏移 45px；不改变自己位置；不推出屏幕。 */
+    /** 当两个角色拥抱/位置严重重叠时，给被遮挡的网格加一个水平偏移，避免线框完全糊在一起。
+     *  规则：只处理真正大面积重叠（>50%），忽略正常并肩站位；最大偏移约一个角色宽度，
+     *  确保拥抱者能完整错开；每帧重算，玩家自己也参与避让。 */
     function computeOverlapShifts(layout) {
         var shifts = new Map();
         if (!layout || layout.length < 2) return shifts;
 
         var rects = layout.map(function(entry) {
-            return { entry: entry, rect: getGridScreenRect(entry), mn: entry.char.MemberNumber, isPlayer: entry.char.IsPlayer && entry.char.IsPlayer() };
+            return { entry: entry, rect: getGridScreenRect(entry), mn: entry.char.MemberNumber };
         });
         rects.sort(function(a, b) { return a.rect.left - b.rect.left; });
         var screenW = window.innerWidth || 1920;
-        var maxShiftPx = 45; // 严控最大偏移，拒绝"推出去半个屏幕"
-        var sameRowThreshold = 0.45; // top 差值不超过线框高度的 45% 视为同一排
+        var maxShiftBase = 70;      // 最小偏移幅度
+        var overlapThreshold = 0.5; // 只有>50%面积重叠才推（拥抱级）
+        var spacing = 16;           // 推开后留出的间距
 
         for (var i = 1; i < rects.length; i++) {
             var cur = rects[i];
-            if (cur.isPlayer) continue; // 玩家自己的线框保持原位
             var curShift = 0;
             for (var j = 0; j < i; j++) {
                 var prev = rects[j];
                 var prevShift = shifts.get(prev.mn) || 0;
-                // 只处理同一排角色，避免上下排被误判为重叠
-                if (Math.abs(prev.rect.top - cur.rect.top) > cur.rect.height * sameRowThreshold) continue;
-                // 只有真正大面积重叠才偏移（拥抱/贴贴）
-                if (rectsOverlap(prev.rect, cur.rect, 0.55)) {
-                    var desired = prev.rect.left + prevShift + prev.rect.width + 18; // 18px 间距
+                if (rectsOverlap(prev.rect, cur.rect, overlapThreshold)) {
+                    var desired = prev.rect.left + prevShift + prev.rect.width + spacing;
                     var need = desired - cur.rect.left;
                     if (need > curShift) curShift = need;
                 }
             }
             if (curShift > 0) {
-                curShift = Math.min(curShift, maxShiftPx);
+                // 最大偏移约一个网格宽度，避免推得太远（和 v0.7.9 的“自身一半/最少80”类似）
+                var maxShift = Math.max(cur.rect.width * 0.55, maxShiftBase);
+                curShift = Math.min(curShift, maxShift);
                 // 限制在屏幕右边界内
-                var maxRight = screenW - 12;
+                var maxRight = screenW - 10;
                 var desiredRight = cur.rect.left + curShift + cur.rect.width;
                 if (desiredRight > maxRight) {
                     curShift = Math.max(0, maxRight - cur.rect.left - cur.rect.width);
