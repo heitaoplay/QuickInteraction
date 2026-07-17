@@ -2,7 +2,7 @@
 // @name         快捷互动 (QuickInteraction)
 // @name:zh      快捷互动
 // @namespace    https://github.com/heitaoplay/QuickInteraction
-// @version      0.7.25
+// @version      0.7.26
 // @description  Bondage Club - 统一动作操作台。一键进入动作模式，在聊天室场景内直接点人物部位选动作，绕过原生5步嵌套菜单。
 // @author       Tao MUSE
 // @homepageURL  https://github.com/heitaoplay/QuickInteraction
@@ -46,7 +46,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         console.log.apply(console, args);
     }
 
-    const VERSION = '0.7.25';
+    const VERSION = '0.7.26';
 
     // ── 存储键 ──
     const S_ENABLED = 'xsact_qa_enabled';
@@ -1627,18 +1627,11 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             '</filter>' +
             '</defs>' +
             '<g class="xsact-body-silhouette">' +
-            '<ellipse cx="110" cy="65" rx="45" ry="53"/>' +
-            '<rect x="85" y="110" width="50" height="42" rx="16"/>' +
-            '<path d="M 70 155 L 150 155 L 145 270 L 75 270 Z"/>' +
-            '<rect x="34" y="165" width="25" height="125" rx="13" transform="rotate(5 46 227)"/>' +
-            '<rect x="161" y="165" width="25" height="125" rx="13" transform="rotate(-5 173 227)"/>' +
-            '<ellipse cx="46" cy="305" rx="13" ry="18"/>' +
-            '<ellipse cx="174" cy="305" rx="13" ry="18"/>' +
-            '<path d="M 72 275 L 148 275 L 152 330 L 68 330 Z"/>' +
-            '<rect x="78" y="330" width="26" height="155" rx="10"/>' +
-            '<rect x="116" y="330" width="26" height="155" rx="10"/>' +
-            '<ellipse cx="91" cy="495" rx="16" ry="11"/>' +
-            '<ellipse cx="129" cy="495" rx="16" ry="11"/>' +
+            '<path d="M 110 48 C 90 48, 82 66, 82 86 C 82 106, 92 120, 104 126 L 104 132 C 84 138, 70 150, 62 170 C 54 190, 52 220, 56 250 C 58 280, 64 310, 68 340 L 72 500 C 72 510, 80 514, 88 514 C 96 514, 100 510, 100 500 L 100 370 C 100 360, 108 354, 116 354 C 124 354, 132 360, 132 370 L 132 500 C 132 510, 136 514, 144 514 C 152 514, 160 510, 160 500 L 164 340 C 168 310, 174 280, 176 250 C 180 220, 178 190, 170 170 C 162 150, 148 138, 128 132 L 128 126 C 140 120, 150 106, 150 86 C 150 66, 142 48, 110 48 Z"/>' +
+            '<path d="M 74 152 C 60 158, 54 176, 56 204 L 58 260 C 60 270, 66 274, 72 270 C 78 266, 78 256, 76 246 L 70 204 C 66 182, 70 164, 78 150 Z"/>' +
+            '<path d="M 146 152 C 160 158, 166 176, 164 204 L 162 260 C 160 270, 154 274, 148 270 C 142 266, 142 256, 144 246 L 150 204 C 154 182, 150 164, 142 150 Z"/>' +
+            '<ellipse cx="110" cy="84" rx="20" ry="26"/>' +
+            '<path d="M 88 58 C 74 64, 70 85, 74 110 C 76 130, 82 150, 88 165 L 92 160 C 86 140, 82 115, 84 95 C 86 78, 94 65, 106 60 C 100 60, 92 60, 88 58 Z M 132 58 C 128 60, 120 60, 114 60 C 126 65, 134 78, 136 95 C 138 115, 134 140, 128 160 L 132 165 C 138 150, 144 130, 146 110 C 150 85, 146 64, 132 58 Z"/>' +
             '</g>' +
             '<ellipse class="xsact-body-part-zone" data-group="ItemHood" cx="110" cy="65" rx="48" ry="56" data-label="头套"/>' +
             '<ellipse class="xsact-body-part-zone" data-group="ItemHead" cx="110" cy="65" rx="39" ry="47" data-label="头"/>' +
@@ -2752,19 +2745,19 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             '  align-self:center;overflow:visible;',
             '  filter:drop-shadow(0 0 10px rgba(var(--xs-accent-rgb), 0.08));',
             '}',
-            '.xsact-body-silhouette ellipse,.xsact-body-silhouette rect,.xsact-body-silhouette path{',
-            '  fill:rgba(var(--xs-accent-rgb), 0.04);',
-            '  stroke:rgba(var(--xs-accent-rgb), 0.12);',
+            '.xsact-body-silhouette ellipse,.xsact-body-silhouette path{',
+            '  fill:rgba(255,255,255,0.08);',
+            '  stroke:rgba(255,255,255,0.20);',
             '  stroke-width:1;',
             '}',
             '.xsact-body-part-zone{',
-            '  fill:rgba(255,255,255,0.05);stroke:rgba(var(--xs-accent-rgb), 0.90);stroke-width:2;',
+            '  fill:transparent;stroke:rgba(255,255,255,0.08);stroke-width:1;',
             '  cursor:pointer;transition:fill .12s,stroke .12s,stroke-width .12s,filter .12s;',
             '  pointer-events:all;',
             '}',
             '.xsact-body-part-zone:hover,.xsact-body-part-zone.hover{',
-            '  fill:rgba(var(--xs-accent-rgb), 0.22);stroke:#fff;stroke-width:3;',
-            '  filter:drop-shadow(0 0 8px rgba(var(--xs-accent-rgb), 0.85));',
+            '  fill:rgba(var(--xs-accent-rgb), 0.18);stroke:#fff;stroke-width:2.5;',
+            '  filter:drop-shadow(0 0 8px rgba(var(--xs-accent-rgb), 0.55));',
             '}',
             '.xsact-body-part-hint{',
             '  font-size:12px;color:var(--xs-text-dim);text-align:center;',
