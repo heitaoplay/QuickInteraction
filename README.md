@@ -34,6 +34,34 @@
 
 ---
 
+## 其他方式（无需 Tampermonkey）
+
+不想装脚本管理器，也可以直接在 BC 页面加载：
+
+### 控制台安装
+1. 在 BC 聊天室页面按 `F12` 打开开发者工具，切到 **Console（控制台）** 标签
+2. 粘贴下面一行并回车：
+
+```js
+var s=document.createElement('script');s.src='https://heitaoplay.github.io/QuickInteraction/assets/main.js?v='+Date.now();document.head.appendChild(s);
+```
+
+3. 右下角出现闪电开关即成功（**每次刷新页面需重新粘贴一次**）
+
+### 书签安装
+1. 右键书签栏 → 新建书签，名称填「快捷互动」
+2. 网址填下面整行：
+
+```
+javascript:(function(){var s=document.createElement('script');s.src='https://heitaoplay.github.io/QuickInteraction/assets/main.js?v='+Date.now();document.head.appendChild(s);})();
+```
+
+3. 以后进入 BC 聊天室，点一下这个书签即可加载（**同样每次刷新需重点**）
+
+> 💡 控制台和书签方式每次刷新都要重新执行一次。想「刷新即自动更新」还是推荐上面的 Tampermonkey 安装。
+
+---
+
 ## 使用
 
 1. 进入 BC 聊天室
