@@ -2,7 +2,7 @@
 // @name         快捷互动 (QuickInteraction)
 // @name:zh      快捷互动
 // @namespace    https://github.com/heitaoplay/QuickInteraction
-// @version      0.7.18
+// @version      0.7.19
 // @description  Bondage Club - 统一动作操作台。一键进入动作模式，在聊天室场景内直接点人物部位选动作，绕过原生5步嵌套菜单。
 // @author       Tao MUSE
 // @homepageURL  https://github.com/heitaoplay/QuickInteraction
@@ -39,7 +39,7 @@
         console.log.apply(console, args);
     }
 
-    const VERSION = '0.7.18';
+    const VERSION = '0.7.19';
 
     // ── 存储键 ──
     const S_ENABLED = 'xsact_qa_enabled';
@@ -592,7 +592,7 @@
         return ordered;
     }
 
-    /** 执行动作（ServerSend 优先，失败降级 ActivityRun）
+    /** 执行动作（先 ActivityRun 本地副作用，再 ServerSend 发送 Activity 包）
      * @param {string} [groupOverride] 指定部位 Group（全身模式逐部位执行时用），缺省用 state.selectedPart */
     function executeAction(charObj, activityName, activityItem, groupOverride) {
         if (!charObj || !activityName) return false;
@@ -607,7 +607,27 @@
             if (!findAllowedActivity(charObj, group, name)) {
                 toast('该动作当前不可用', '#FF5C5C'); return false;
             }
-            // 方案 A：ServerSend（标准方式）
+
+            // 先执行 BC 原生 ActivityRun(..., false) 触发本地副作用：
+            // 重置 PropertyAutoPunishHandled（MakeSound 动作会触发口塞充气等自动惩罚）、
+            // ActivityEffect（目标是玩家时）、ActivityRunSelf（玩家自身快感计算）、
+            // PropertyPunishActivityCache 等。之后再自己发包，避免直接 ServerSend 跳过规则。
+            var activityObj = null;
+            var targetGroupObj = null;
+            if (typeof ActivityRun === 'function' && typeof ActivityGetGroupOrMirror === 'function' && typeof AssetAllActivities === 'function') {
+                try {
+                    targetGroupObj = ActivityGetGroupOrMirror(charObj.AssetFamily, group);
+                    var allActs = AssetAllActivities(charObj.AssetFamily);
+                    activityObj = allActs.find(function(a) { return a.Name === name; });
+                    if (targetGroupObj && activityObj) {
+                        ActivityRun(Player, charObj, targetGroupObj, { Activity: activityObj, Item: activityItem }, false);
+                    }
+                } catch (runErr) {
+                    console.warn('[XSAct-QA] ActivityRun 本地副作用执行失败:', runErr.message);
+                }
+            }
+
+            // 再 ServerSend（标准方式）
             // 设置目标聚焦部位：Prank 等自定义动作（如 Liko_CutClothes）的回调依赖
             // target.FocusGroup?.Name 决定作用部位。原生 UI 点击时会自动设置该值，
             // 但本插件直接发包不经过那一步，需手动补上，发完立即还原。
@@ -622,23 +642,12 @@
                 recordLastAction(name, charObj.MemberNumber, group, packet.Dictionary);
                 return true;
             } catch (sendErr) {
-                console.warn('[XSAct-QA] ServerSend 失败，尝试 ActivityRun 降级:', sendErr.message);
+                console.warn('[XSAct-QA] ServerSend 失败:', sendErr.message);
             } finally {
                 charObj.FocusGroup = prevFocus;
             }
-            // 方案 B：ActivityRun 降级（使用原生逻辑构造字典，参数需与签名一致）
-            if (typeof ActivityRun === 'function' && typeof ActivityGetGroupOrMirror === 'function' && typeof AssetAllActivities === 'function') {
-                try {
-                    var targetGroup = ActivityGetGroupOrMirror(charObj.AssetFamily, group);
-                    var allActs = AssetAllActivities(charObj.AssetFamily);
-                    var activityObj = allActs.find(function(a) { return a.Name === name; });
-                    if (targetGroup && activityObj) {
-                        ActivityRun(Player, charObj, targetGroup, { Activity: activityObj, Item: activityItem }, true);
-                        recordLastAction(name, charObj.MemberNumber, group, null);
-                        return true;
-                    }
-                } catch (runErr) { console.error('[XSAct-QA] ActivityRun 也失败:', runErr.message); }
-            }
+
+            // 最终兜底：如果 ActivityRun 也拿不到，提示不可用
             toast('该动作暂不可用', '#FF5C5C');
             return false;
         } catch (e) {
