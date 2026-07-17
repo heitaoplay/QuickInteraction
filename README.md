@@ -10,6 +10,10 @@
 [![Tampermonkey](https://img.shields.io/badge/engine-Tampermonkey-FF5C7A)](https://www.tampermonkey.net/)
 [![Maintained](https://img.shields.io/badge/maintained-yes-FF5C7A)](https://github.com/heitaoplay/QuickInteraction/commits)
 
+[![Install QuickInteraction](https://img.shields.io/badge/Install-Tampermonkey-FF5C7A?logo=tampermonkey&logoColor=white)](https://github.com/heitaoplay/QuickInteraction/raw/main/loader.user.js)
+
+> 点击上方按钮，Tampermonkey 会自动弹出安装提示。装好后**刷新 BC 页面就是最新版**，无需手动点更新。
+
 **快捷互动 · QuickInteraction** 是一个 Bondage Club 动作快捷操作台。它把原本要层层点开的原生菜单，收敛成一个悬浮操作面板——进入动作模式后，直接在人物身上点部位就能选动作，一步到位。
 
 ---
