@@ -38,6 +38,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
     // 发布版设 DEBUG = false，所有 logD 静默；仅 console.warn/error 用于真实异常。
     // 排障时临时改 DEBUG = true 即可恢复全部内部日志。
     // ════════════════════════════════════════════════════════════════════════
+    /* ===== 1. 常量与配置（DEBUG / 版本 / 存储键 / 主题键） ===== */
     const DEBUG = false;
     function logD() {
         if (!DEBUG) return;
@@ -154,6 +155,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
 
     // 缓存：family|group -> Zone 矩形数组 [[X,Y,W,H], ...]
     var _zoneCache = {};
+    /* ===== 2. 工具函数（waitFor / Zone 提取 / 坐标换算） ===== */
     function getPartZones(C, groupName) {
         var family = (C && C.AssetFamily) || (typeof Player !== 'undefined' && Player.AssetFamily) || 'Female3DCG';
         var key = family + '|' + groupName;
@@ -200,6 +202,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         });
     }
 
+    /* ===== 3. 存储层（localStorage + 服务器 OnlineSettings） ===== */
     function loadStorage(key, fallback) {
         try { var v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; }
         catch (e) { console.error('[XSAct-QA] 读取存储失败 ' + key + ':', e); return fallback; }
@@ -256,12 +259,18 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         saveToServer(key, val);
     }
     function loadSetting(key, fallback) {
-        var s = loadFromServer(key, undefined);
-        if (s !== undefined) return s;
-        return loadStorage(key, fallback);
+        try {
+            var s = loadFromServer(key, undefined);
+            if (s !== undefined) return s;
+            return loadStorage(key, fallback);
+        } catch (e) {
+            console.error('[XSAct-QA] 读取设置失败 ' + key + ':', e);
+            return fallback;
+        }
     }
 
     // ── 主题应用 ──
+    /* ===== 4. 主题系统 ===== */
     function applyTheme(themeId) {
         var t = getTheme(themeId);
         state.theme = t.id;
@@ -282,6 +291,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
      * 翻译名从 BC_Interactive_Index 或 ActivityDictionaryText 获取。
      * fallback 才用 BC_Interactive_Index / ActivityFemale3DCG 全量列表。
      */
+    /* ===== 5. 动作解析与发包（核心业务） ===== */
     function getActionsForPart(partGroup, targetChar) {
         targetChar = targetChar || state.selectedTarget;
         var actions = [];
@@ -701,6 +711,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
        比自动按动作名聚合更准确，可跨部位、跨动作自由组合。
        ══════════════════════════════════════════════════════════════ */
 
+    /* ===== 6. 自定义组合（CRUD + 执行） ===== */
     function generateId() { return 'cmb_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 7); }
     function saveCombos() { persist(S_COMBOS, state.combos); }
     function getCombo(id) { return state.combos.find(function(c) { return c.id === id; }); }
@@ -787,6 +798,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
     }
 
     /** 切换「全部」范围开关，并更新按钮视觉 */
+    /* ===== 7. 模式切换（全员 / 收藏 / 自己 / 名字） ===== */
     function toggleAllMode() {
         state.allModeActive = !state.allModeActive;
         updateAllButtonVisual();
@@ -887,6 +899,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
     }
 
     /** Toast 提示 */
+    /* ===== 8. 提示与反馈 ===== */
     function toast(msg, color) {
         color = color || '#FF5C7A';
         try {
@@ -915,6 +928,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
     // ════════════════════════════════════════════════════════════════════════
 
     /** 创建 DOM 切换按钮 */
+    /* ===== 9. 浮动开关（闪电按钮 + 拖拽 + 可见性守卫） ===== */
     function createToggleButton() {
         if (state.toggleBtnEl) return;
         state.toggleBtnEl = document.createElement('button');
@@ -1059,6 +1073,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
     /**
      * 进入/退出动作模式
      */
+    /* ===== 10. 动作模式生命周期 ===== */
     function toggleActionMode() {
         state.isActive = !state.isActive;
         persist(S_ENABLED, state.isActive);
@@ -1103,11 +1118,11 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         renderPanel();
 
         // 恢复自己模式开关状态
-        try { state.selfModeActive = loadSetting(S_SELF, false); } catch (_) {}
+        state.selfModeActive = loadSetting(S_SELF, false);
         updateSelfButtonVisual();
 
         // 恢复名字显示开关状态（新装默认关闭）
-        try { state.showNames = loadSetting(S_SHOW_NAMES, false); } catch (_) {}
+        state.showNames = loadSetting(S_SHOW_NAMES, false);
         updateShowNamesButtonVisual();
 
         // 为每个角色创建身体部位浮动网格，并同步渲染人物列表
@@ -1140,6 +1155,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
     }
 
     /** 构建右侧面板 HTML */
+    /* ===== 11. 主面板 UI（HTML 结构） ===== */
     function buildPanelHTML() {
         return '\
 <div class="xsact-qa-panel-inner">\
@@ -1194,6 +1210,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
      * 获取房间内"真实成员"的绘制布局（逻辑坐标）
      * 使用 ChatRoomCharacter（权威成员列表）交叉校验，避免 Drawlist 含离场/NPC 角色
      */
+    /* ===== 12. 画布身体网格（霓虹线框 / 名字浮层） ===== */
     function getCharLayout() {
         var layout = [];
         try {
@@ -1529,6 +1546,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
     }
 
     /** 选中目标和部位 */
+    /* ===== 13. 目标选择与人物浮层 ===== */
     function selectTargetAndPart(charObj, partGroup) {
         state.selectedTarget = charObj;
         state.selectedPart = partGroup;
@@ -1755,6 +1773,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
     // ════════════════════════════════════════════════════════════════════════
 
     /** 面板渲染分派：根据 state.panelMode 渲染「单部位」或「自定义组合」 */
+    /* ===== 14. 面板渲染与模式 ===== */
     function renderPanel() {
         if (!state.actionPanelEl) return;
         updateAllButtonVisual();
@@ -1796,7 +1815,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         if (!state.actionPanelEl || !state.selectedTarget) { toast('请先选择一个人物部位', '#888'); return; }
         if (state.panelMode === 'combo') {
             // 重新从存储加载组合，并刷新视图
-            try { state.combos = loadSetting(S_COMBOS, []); } catch (_) {}
+            state.combos = loadSetting(S_COMBOS, []);
             updateComboPanel(state.selectedTarget);
             toast('组合列表已刷新', '#FF5C7A');
         } else {
@@ -3030,6 +3049,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
     // 初始化入口
     // ════════════════════════════════════════════════════════════════════════
 
+    /* ===== 15. 启动与初始化 ===== */
     async function main() {
         logD('v' + VERSION + ' 初始化...');
 
@@ -3065,17 +3085,17 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         logD('玩家已登入:', Player.AccountName || Player.Name);
 
         // 加载存储
-        try { state.isActive = loadSetting(S_ENABLED, false); } catch (_) {}
-        try { state.selfModeActive = loadSetting(S_SELF, false); } catch (_) {}
-        try { state.favorites = loadSetting(S_FAVS, []); } catch (_) {}
-        try { state.presets = loadSetting(S_PRESETS, []); } catch (_) {}
-        try { state.lastAction = loadStorage(S_LAST, null); } catch (_) {}
-        try { state.combos = loadSetting(S_COMBOS, []); } catch (_) {}
-        try { state.showNames = loadSetting(S_SHOW_NAMES, false); } catch (_) {}
+        state.isActive = loadSetting(S_ENABLED, false);
+        state.selfModeActive = loadSetting(S_SELF, false);
+        state.favorites = loadSetting(S_FAVS, []);
+        state.presets = loadSetting(S_PRESETS, []);
+        state.lastAction = loadStorage(S_LAST, null);
+        state.combos = loadSetting(S_COMBOS, []);
+        state.showNames = loadSetting(S_SHOW_NAMES, false);
 
         // 恢复主题设置（优先读游戏账号，回退本地）
-        try { state.theme = loadSetting(S_THEME, 'dark'); } catch (_) {}
-        try { applyTheme(state.theme); } catch (_) {}
+        state.theme = loadSetting(S_THEME, 'dark');
+        applyTheme(state.theme);
 
         // 注入样式
         try { injectStyles(); } catch (e) { console.warn('[XSAct-QA] injectStyles 失败:', e); }
