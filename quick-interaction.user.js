@@ -2,7 +2,7 @@
 // @name         快捷互动 (QuickInteraction)
 // @name:zh      快捷互动
 // @namespace    https://github.com/heitaoplay/QuickInteraction
-// @version      0.7.15
+// @version      0.7.16
 // @description  Bondage Club - 统一动作操作台。一键进入动作模式，在聊天室场景内直接点人物部位选动作，绕过原生5步嵌套菜单。
 // @author       Tao MUSE
 // @homepageURL  https://github.com/heitaoplay/QuickInteraction
@@ -39,7 +39,7 @@
         console.log.apply(console, args);
     }
 
-    const VERSION = '0.7.15';
+    const VERSION = '0.7.16';
 
     // ── 存储键 ──
     const S_ENABLED = 'xsact_qa_enabled';
@@ -2542,17 +2542,13 @@
         // 定时刷新：检测新进入房间的角色（每 3 秒）
         function startRefreshTimer() {
             stopRefreshTimer();
+            // 仅做兜底刷新：每帧 ChatRoomMenuDraw 已调用 updateGridPositions（其内部用
+            // state.lastLayoutCount 正确判断人数变化并重建）。这里不能再用自己的
+            // bodyGrids.size 与 layout.length 比较来触发 refreshBodyGrids，否则 selfMode
+            // 关闭时玩家网格不计入 bodyGrids.size，导致 6 !== 7 永远成立，每 3 秒强制重建
+            // 一次、线框瞬间跳动。
             state.refreshInterval = setInterval(function() {
-                if (state.isActive) {
-                    var currentCount = state.bodyGrids.size;
-                    var layout = getCharLayout();
-                    if (layout.length !== currentCount) {
-                        logD('检测到角色数量变化:', currentCount, '→', layout.length);
-                        refreshBodyGrids();
-                    } else {
-                        updateGridPositions();
-                    }
-                }
+                if (state.isActive) updateGridPositions();
             }, 3000);
         }
         function stopRefreshTimer() {
