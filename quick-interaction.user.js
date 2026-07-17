@@ -2,7 +2,7 @@
 // @name         快捷互动 (QuickInteraction)
 // @name:zh      快捷互动
 // @namespace    https://github.com/heitaoplay/QuickInteraction
-// @version      0.7.4
+// @version      0.7.5
 // @description  Bondage Club - 统一动作操作台。一键进入动作模式，在聊天室场景内直接点人物部位选动作，绕过原生5步嵌套菜单。
 // @author       Tao MUSE
 // @homepageURL  https://github.com/heitaoplay/QuickInteraction
@@ -39,7 +39,7 @@
         console.log.apply(console, args);
     }
 
-    const VERSION = '0.7.4';
+    const VERSION = '0.7.5';
 
     // ── 存储键 ──
     const S_ENABLED = 'xsact_qa_enabled';
@@ -895,9 +895,31 @@
         }
     }
 
-    /** 兼容旧接口：DrawProcess hook 调用（现在只负责创建 DOM 按钮） */
+    /** 兼容旧接口：DrawProcess hook 调用（确保聊天室内闪电图标常驻可见） */
     function drawToggleButton() {
-        createToggleButton();
+        // 按钮可能被意外移出 DOM，或仅被隐藏 —— 两种情况都要恢复
+        if (!state.toggleBtnEl || !document.body.contains(state.toggleBtnEl)) {
+            state.toggleBtnEl = null;
+            createToggleButton();
+        }
+        if (state.toggleBtnEl) {
+            state.toggleBtnEl.style.display = '';
+        }
+    }
+
+    /** 可见性守卫：聊天室内确保按钮存在且可见，离开界面则隐藏。
+     *  不依赖 DrawProcess hook（BC 打包后 hookFunction 对该转发函数无效）。 */
+    function guardToggleVisibility() {
+        if (typeof CurrentScreen === 'undefined') return;
+        if (CurrentScreen === 'ChatRoom') {
+            drawToggleButton();                 // 创建(若需) + 恢复 display
+        } else if (state.toggleBtnEl) {
+            state.toggleBtnEl.style.display = 'none';
+        }
+    }
+    function startVisibilityGuard() {
+        if (window.__XSActQA_VisGuard) { try { clearInterval(window.__XSActQA_VisGuard); } catch (_) {} }
+        window.__XSActQA_VisGuard = setInterval(guardToggleVisibility, 500);
     }
 
     // ════════════════════════════════════════════════════════════════════════
@@ -2414,9 +2436,9 @@
             try { enterActionMode(); } catch (e) { console.warn('[XSAct-QA] 自动进入动作模式失败:', e); }
         }
 
-        // 聊天室内确保浮动开关（闪电图标）常驻可见，不依赖进入动作模式
-        if (typeof CurrentScreen !== 'undefined' && CurrentScreen === 'ChatRoom') {
-            try { createToggleButton(); } catch (e) { console.warn('[XSAct-QA] 创建浮动开关失败:', e); }
+        // 聊天室内确保浮动开关（闪电图标）常驻可见；用轮询守卫，离开/回到聊天室都能正确恢复
+        if (typeof CurrentScreen !== 'undefined') {
+            try { startVisibilityGuard(); guardToggleVisibility(); } catch (e) { console.warn('[XSAct-QA] 启动浮动开关守卫失败:', e); }
         }
 
         // 暴露调试/控制接口（无论前面是否出错，必须暴露）
