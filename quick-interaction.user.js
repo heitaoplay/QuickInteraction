@@ -2,7 +2,7 @@
 // @name         快捷互动 (QuickInteraction)
 // @name:zh      快捷互动
 // @namespace    https://github.com/heitaoplay/QuickInteraction
-// @version      0.7.23
+// @version      0.7.24
 // @description  Bondage Club - 统一动作操作台。一键进入动作模式，在聊天室场景内直接点人物部位选动作，绕过原生5步嵌套菜单。
 // @author       Tao MUSE
 // @homepageURL  https://github.com/heitaoplay/QuickInteraction
@@ -46,7 +46,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         console.log.apply(console, args);
     }
 
-    const VERSION = '0.7.23';
+    const VERSION = '0.7.24';
 
     // ── 存储键 ──
     const S_ENABLED = 'xsact_qa_enabled';
@@ -73,6 +73,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         panelMode: 'part',            // 'part'=单部位 | 'combo'=自定义组合
         showNames: false,             // 是否显示角色名字浮层
         charListOpen: false,          // 人物列表弹出层是否打开
+        popoverView: 'chars',         // 人物浮层当前视图：'chars' 人物列表 | 'parts' 部位选择
         allModeActive: false,         // 全员范围开关
         favModeActive: false,         // 收藏模式开关
         selfModeActive: false,        // 自己模式开关
@@ -1144,9 +1145,8 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
 <div class="xsact-qa-panel-inner">\
   <div class="xsact-qa-panel-header" id="xsact-panel-header">\
     <span class="xsact-panel-grip" id="xsact-drag-grip" title="拖动面板">' + svgIcon('grip', 16) + '</span>\
-    <span id="xsact-panel-title">选择部位...</span>\
+    <span id="xsact-panel-title">选择动作...</span>\
     <span class="xsact-panel-head-actions">\
-      <button class="xsact-qa-mini-btn" id="xsact-char-popover-toggle" title="展开人物列表">' + svgIcon('users', 15) + '<span>人物</span></button>\
       <button class="xsact-qa-mini-btn" id="xsact-theme-btn" title="切换深色/浅色主题"><span class="xsact-theme-icon sun">' + svgIcon('sun', 15) + '</span><span class="xsact-theme-icon moon">' + svgIcon('moon', 15) + '</span></button>\
       <button class="xsact-qa-mini-btn" id="xsact-refresh-btn" title="刷新当前部位/人物的动作列表状态">' + svgIcon('refresh', 15) + '</button>\
       <button class="xsact-qa-mini-btn" id="xsact-exit-panel-btn" title="退出快速动作模式 (Esc)">' + svgIcon('close', 15) + '</button>\
@@ -1159,7 +1159,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         <button class="xsact-mode-tab" data-mode="combo" title="组合动作：手动拼装多部位动作并一键执行">' + svgIcon('layers', 14) + '<span>组合动作</span></button>\
       </div>\
       <div class="xsact-qa-panel-body" id="xsact-action-list">\
-        <div class="xsact-qa-empty">请在上方点击「人物」按钮选择目标</div>\
+        <div class="xsact-qa-empty">点击左侧 ◀ 按钮选择人物和部位</div>\
       </div>\
     </div>\
   </div>\
@@ -1176,11 +1176,14 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
 </div>\
 <div class="xsact-char-popover" id="xsact-char-popover" style="display:none;">\
   <div class="xsact-char-popover-header">\
-    <span class="xsact-char-popover-title">' + svgIcon('users', 14) + '<span>人物列表</span></span>\
+    <button class="xsact-char-popover-back" id="xsact-char-popover-back" title="返回人物列表">&#8249;</button>\
+    <span class="xsact-char-popover-title" id="xsact-char-popover-title">人物列表</span>\
     <button class="xsact-char-popover-close" id="xsact-char-popover-close" title="关闭">×</button>\
   </div>\
-  <div class="xsact-char-popover-items" id="xsact-char-popover-items"></div>\
-</div>';
+  <div class="xsact-char-popover-body" id="xsact-char-popover-body"></div>\
+</div>\
+<div id="xsact-char-popover-tab" title="人物列表">' + svgIcon('triangle-left', 12) + '</div>\
+<div id="xsact-popover-connector"></div>';
     }
 
     // ════════════════════════════════════════════════════════════════════════
@@ -1558,12 +1561,13 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         return arr;
     }
 
-    /** 从人物列表选中角色：清除已选部位，进入部位选择视图 */
+    /** 从人物列表选中角色：清除已选部位，切换到左侧浮层的部位选择视图 */
     function selectCharacterFromList(charObj) {
         state.selectedTarget = charObj;
         state.selectedPart = null;
         state.selectedAction = null;
         state.selectedActionItem = null;
+        state.popoverView = 'parts';
         // 同步高亮该角色的身体线框
         state.bodyGrids.forEach(function(grid, c) {
             grid.classList.toggle('selected', c.MemberNumber === charObj.MemberNumber);
@@ -1571,32 +1575,35 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                 btn.classList.remove('active');
             });
         });
-        closeCharPopover();
-        renderCharList();
+        renderPopover();
         renderPanel();
     }
 
     /** 渲染人物列表弹出层 */
     function renderCharList() {
-        var listEl = state.actionPanelEl && state.actionPanelEl.querySelector('#xsact-char-popover-items');
-        if (!listEl) return;
+        var bodyEl = state.actionPanelEl && state.actionPanelEl.querySelector('#xsact-char-popover-body');
+        if (!bodyEl) return;
         var chars = getRoomCharacters();
-        if (chars.length === 0) {
-            listEl.innerHTML = '<div class="xsact-char-popover-empty">房间无人</div>';
-            return;
-        }
         var html = '';
-        chars.forEach(function(c) {
-            var isSelf = c.IsPlayer && c.IsPlayer();
-            var selected = state.selectedTarget && state.selectedTarget.MemberNumber === c.MemberNumber;
-            html += '<div class="xsact-char-popover-item' + (selected ? ' selected' : '') + (isSelf ? ' self' : '') + '" data-mn="' + c.MemberNumber + '">' +
-                '<span class="xsact-char-popover-name">' + escapeHtml(characterDisplayName(c)) + '</span>' +
-                (isSelf ? '<span class="xsact-char-popover-self">自己</span>' : '') +
-                '</div>';
-        });
-        listEl.innerHTML = html;
-        listEl.querySelectorAll('.xsact-char-popover-item').forEach(function(item) {
-            item.addEventListener('click', function() {
+        if (chars.length === 0) {
+            html = '<div class="xsact-char-popover-empty">房间无人</div>';
+        } else {
+            html = '<div class="xsact-char-popover-items">';
+            chars.forEach(function(c) {
+                var isSelf = c.IsPlayer && c.IsPlayer();
+                var selected = state.selectedTarget && state.selectedTarget.MemberNumber === c.MemberNumber;
+                html += '<div class="xsact-char-popover-item' + (selected ? ' selected' : '') + (isSelf ? ' self' : '') + '" data-mn="' + c.MemberNumber + '">' +
+                    '<span class="xsact-char-popover-name">' + escapeHtml(characterDisplayName(c)) + '</span>' +
+                    (isSelf ? '<span class="xsact-char-popover-self">自己</span>' : '') +
+                    '</div>';
+            });
+            html += '</div>';
+        }
+        bodyEl.innerHTML = html;
+        var items = bodyEl.querySelectorAll('.xsact-char-popover-item');
+        items.forEach(function(item) {
+            item.addEventListener('click', function(e) {
+                e.stopPropagation();
                 var mn = parseInt(item.dataset.mn, 10);
                 var c = chars.find(function(x) { return x.MemberNumber === mn; });
                 if (c) selectCharacterFromList(c);
@@ -1604,61 +1611,21 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         });
     }
 
-    /** 打开人物列表弹出层 */
-    function openCharPopover() {
-        if (!state.actionPanelEl) return;
-        var popover = state.actionPanelEl.querySelector('#xsact-char-popover');
-        var toggle = state.actionPanelEl.querySelector('#xsact-char-popover-toggle');
-        if (!popover) return;
-        // 智能定位：若面板左侧空间不足，则弹出层显示在右侧
-        var rect = state.actionPanelEl.getBoundingClientRect();
-        if (rect.left < 240) {
-            popover.classList.add('right');
-        } else {
-            popover.classList.remove('right');
-        }
-        popover.style.display = 'flex';
-        state.charListOpen = true;
-        if (toggle) toggle.classList.add('active');
-        renderCharList();
-    }
-
-    /** 关闭人物列表弹出层 */
-    function closeCharPopover() {
-        if (!state.actionPanelEl) return;
-        var popover = state.actionPanelEl.querySelector('#xsact-char-popover');
-        var toggle = state.actionPanelEl.querySelector('#xsact-char-popover-toggle');
-        if (popover) popover.style.display = 'none';
-        state.charListOpen = false;
-        if (toggle) toggle.classList.remove('active');
-    }
-
-    /** 切换人物列表弹出层 */
-    function toggleCharPopover() {
-        if (state.charListOpen) closeCharPopover();
-        else openCharPopover();
-    }
-
-    /** 渲染人物部位选择视图 — 使用 SVG 人物剪影 + 线框热区 */
-    function renderPartSelection(charObj) {
-        var listEl = state.actionPanelEl.querySelector('#xsact-action-list');
-        var titleEl = state.actionPanelEl.querySelector('#xsact-panel-title');
-        if (!listEl) return;
-        if (titleEl) titleEl.textContent = (characterDisplayName(charObj) || '?') + ' → 选择部位';
-
+    /** 在左侧浮层渲染人物部位选择（SVG 剪影 + 线框热区） */
+    function renderPopoverParts(charObj) {
+        var bodyEl = state.actionPanelEl && state.actionPanelEl.querySelector('#xsact-char-popover-body');
+        if (!bodyEl) return;
         var svg = '<svg class="xsact-body-svg" viewBox="0 0 220 520" xmlns="http://www.w3.org/2000/svg">' +
             '<defs>' +
             '<linearGradient id="xsact-body-grad" x1="0" y1="0" x2="0" y2="1">' +
-            '<stop offset="0%" stop-color="rgb(var(--xs-accent-rgb) / 0.10)"/>' +
-            '<stop offset="100%" stop-color="rgb(var(--xs-accent-rgb) / 0.02)"/>' +
+            '<stop offset="0%" stop-color="rgba(var(--xs-accent-rgb), 0.10)"/>' +
+            '<stop offset="100%" stop-color="rgba(var(--xs-accent-rgb), 0.02)"/>' +
             '</linearGradient>' +
             '<filter id="xsact-body-glow" x="-50%" y="-50%" width="200%" height="200%">' +
             '<feGaussianBlur stdDeviation="2.5" result="blur"/>' +
             '<feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>' +
             '</filter>' +
             '</defs>' +
-
-            <!-- 背景人物剪影 -->' +
             '<g class="xsact-body-silhouette">' +
             '<ellipse cx="110" cy="65" rx="45" ry="53"/>' +
             '<rect x="85" y="110" width="50" height="42" rx="16"/>' +
@@ -1673,8 +1640,6 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             '<ellipse cx="91" cy="495" rx="16" ry="11"/>' +
             '<ellipse cx="129" cy="495" rx="16" ry="11"/>' +
             '</g>' +
-
-            <!-- 头套 -->' +
             '<ellipse class="xsact-body-part-zone" data-group="ItemHood" cx="110" cy="65" rx="48" ry="56" data-label="头套"/>' +
             '<ellipse class="xsact-body-part-zone" data-group="ItemHead" cx="110" cy="65" rx="39" ry="47" data-label="头"/>' +
             '<ellipse class="xsact-body-part-zone" data-group="ItemEars" cx="73" cy="65" rx="8" ry="14" data-label="耳"/>' +
@@ -1683,31 +1648,25 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             '<ellipse class="xsact-body-part-zone" data-group="ItemMouth" cx="110" cy="86" rx="20" ry="11" data-label="口"/>' +
             '<ellipse class="xsact-body-part-zone" data-group="ItemMouth2" cx="86" cy="88" rx="12" ry="8" data-label="口2"/>' +
             '<ellipse class="xsact-body-part-zone" data-group="ItemMouth3" cx="134" cy="88" rx="12" ry="8" data-label="口3"/>' +
-
             '<rect class="xsact-body-part-zone" data-group="ItemNeck" x="86" y="112" width="48" height="38" rx="14" data-label="颈"/>' +
             '<rect class="xsact-body-part-zone" data-group="ItemNeckAccessories" x="76" y="120" width="10" height="22" rx="4" data-label="颈饰"/>' +
             '<rect class="xsact-body-part-zone" data-group="ItemNeckAccessories" x="134" y="120" width="10" height="22" rx="4" data-label="颈饰"/>' +
             '<rect class="xsact-body-part-zone" data-group="ItemNeckRestraints" x="95" y="116" width="30" height="12" rx="4" data-label="颈束"/>' +
-
             '<rect class="xsact-body-part-zone" data-group="ItemBreast" x="68" y="155" width="84" height="55" rx="16" data-label="胸"/>' +
             '<ellipse class="xsact-body-part-zone" data-group="ItemNipples" cx="88" cy="183" rx="14" ry="10" data-label="乳"/>' +
             '<ellipse class="xsact-body-part-zone" data-group="ItemNipples" cx="132" cy="183" rx="14" ry="10" data-label="乳"/>' +
             '<ellipse class="xsact-body-part-zone" data-group="ItemNipplesPiercings" cx="88" cy="183" rx="6" ry="5" data-label="乳穿"/>' +
             '<ellipse class="xsact-body-part-zone" data-group="ItemNipplesPiercings" cx="132" cy="183" rx="6" ry="5" data-label="乳穿"/>' +
-
             '<rect class="xsact-body-part-zone" data-group="ItemTorso" x="72" y="213" width="76" height="52" rx="12" data-label="躯干"/>' +
             '<rect class="xsact-body-part-zone" data-group="ItemTorso2" x="76" y="270" width="68" height="42" rx="12" data-label="腹"/>' +
-
             '<rect class="xsact-body-part-zone" data-group="ItemArms" x="34" y="165" width="25" height="110" rx="13" transform="rotate(5 46 220)" data-label="手臂"/>' +
             '<rect class="xsact-body-part-zone" data-group="ItemArms" x="161" y="165" width="25" height="110" rx="13" transform="rotate(-5 173 220)" data-label="手臂"/>' +
             '<ellipse class="xsact-body-part-zone" data-group="ItemHands" cx="46" cy="290" rx="11" ry="16" data-label="手"/>' +
             '<ellipse class="xsact-body-part-zone" data-group="ItemHands" cx="174" cy="290" rx="11" ry="16" data-label="手"/>' +
-
             '<path class="xsact-body-part-zone" data-group="ItemPelvis" d="M 72 318 L 148 318 L 150 365 L 70 365 Z" data-label="腰臀"/>' +
             '<ellipse class="xsact-body-part-zone" data-group="ItemVulva" cx="110" cy="345" rx="18" ry="12" data-label="私处"/>' +
             '<ellipse class="xsact-body-part-zone" data-group="ItemVulvaPiercings" cx="110" cy="345" rx="8" ry="5" data-label="阴穿"/>' +
             '<ellipse class="xsact-body-part-zone" data-group="ItemButt" cx="110" cy="360" rx="28" ry="16" data-label="臀后"/>' +
-
             '<rect class="xsact-body-part-zone" data-group="ItemLegs" x="78" y="370" width="26" height="120" rx="10" data-label="腿"/>' +
             '<rect class="xsact-body-part-zone" data-group="ItemLegs" x="116" y="370" width="26" height="120" rx="10" data-label="腿"/>' +
             '<ellipse class="xsact-body-part-zone" data-group="ItemFeet" cx="91" cy="498" rx="14" ry="9" data-label="脚"/>' +
@@ -1716,11 +1675,9 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             '<ellipse class="xsact-body-part-zone" data-group="ItemBoots" cx="129" cy="498" rx="16" ry="11" data-label="靴"/>' +
             '</svg>' +
             '<div class="xsact-body-part-hint">点击身体部位选择动作</div>';
-
-        listEl.innerHTML = '<div class="xsact-body-select">' + svg + '</div>';
-
-        var hint = listEl.querySelector('.xsact-body-part-hint');
-        listEl.querySelectorAll('.xsact-body-part-zone').forEach(function(zone) {
+        bodyEl.innerHTML = '<div class="xsact-body-select">' + svg + '</div>';
+        var hint = bodyEl.querySelector('.xsact-body-part-hint');
+        bodyEl.querySelectorAll('.xsact-body-part-zone').forEach(function(zone) {
             zone.addEventListener('mouseenter', function() {
                 var label = zone.dataset.label || zone.dataset.group;
                 if (hint) hint.textContent = label;
@@ -1730,12 +1687,75 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                 if (hint) hint.textContent = '点击身体部位选择动作';
                 zone.classList.remove('hover');
             });
-            zone.addEventListener('click', function() {
+            zone.addEventListener('click', function(e) {
+                e.stopPropagation();
                 state.selectedPart = zone.dataset.group;
                 renderPanel();
+                // 选择部位后保持浮层开启，方便继续选其他部位
             });
         });
     }
+
+    /** 渲染左侧人物浮层：根据 popoverView 切换人物列表 / 部位选择 */
+    function renderPopover() {
+        var popover = state.actionPanelEl && state.actionPanelEl.querySelector('#xsact-char-popover');
+        var titleEl = state.actionPanelEl && state.actionPanelEl.querySelector('#xsact-char-popover-title');
+        if (!popover) return;
+        var view = (state.popoverView === 'parts' && state.selectedTarget) ? 'parts' : 'chars';
+        popover.classList.toggle('show-back', view === 'parts');
+        if (view === 'chars') {
+            if (titleEl) titleEl.textContent = '人物列表';
+            renderCharList();
+        } else {
+            if (titleEl) titleEl.textContent = (characterDisplayName(state.selectedTarget) || '?') + ' → 选择部位';
+            renderPopoverParts(state.selectedTarget);
+        }
+    }
+
+    /** 打开人物列表弹出层 */
+    function openCharPopover() {
+        if (!state.actionPanelEl) return;
+        var panel = state.actionPanelEl;
+        var popover = panel.querySelector('#xsact-char-popover');
+        var tab = panel.querySelector('#xsact-char-popover-tab');
+        if (!popover) return;
+        // 打开时默认显示人物列表
+        state.popoverView = 'chars';
+        // 智能定位：若面板左侧空间不足，则弹出层显示在右侧
+        var rect = panel.getBoundingClientRect();
+        if (rect.left < 256) {
+            popover.classList.add('right');
+        } else {
+            popover.classList.remove('right');
+        }
+        popover.style.display = 'flex';
+        state.charListOpen = true;
+        panel.classList.add('popover-open');
+        if (tab) tab.classList.add('active');
+        renderPopover();
+    }
+
+    /** 关闭人物列表弹出层 */
+    function closeCharPopover() {
+        if (!state.actionPanelEl) return;
+        var panel = state.actionPanelEl;
+        var popover = panel.querySelector('#xsact-char-popover');
+        var tab = panel.querySelector('#xsact-char-popover-tab');
+        if (popover) popover.style.display = 'none';
+        state.charListOpen = false;
+        state.popoverView = 'chars';
+        panel.classList.remove('popover-open');
+        if (tab) tab.classList.remove('active');
+    }
+
+    /** 切换人物列表弹出层 */
+    function toggleCharPopover() {
+        if (state.charListOpen) closeCharPopover();
+        else openCharPopover();
+    }
+
+    /** 渲染人物部位选择视图 — 使用 SVG 人物剪影 + 线框热区 */
+    /* 人物部位选择已迁移到左侧浮层：renderPopoverParts / renderPopover */
 
     // ════════════════════════════════════════════════════════════════════════
     // 右侧动作面板
@@ -1750,13 +1770,16 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             var listEl0 = state.actionPanelEl.querySelector('#xsact-action-list');
             var titleEl0 = state.actionPanelEl.querySelector('#xsact-panel-title');
             if (titleEl0) titleEl0.textContent = (state.panelMode === 'combo') ? '选择人物...' : '选择动作...';
-            if (listEl0) listEl0.innerHTML = '<div class="xsact-qa-empty">请在上方点击「人物」按钮选择目标</div>';
+            if (listEl0) listEl0.innerHTML = '<div class="xsact-qa-empty">点击左侧 ◀ 按钮选择人物和部位</div>';
             return;
         }
         if (state.panelMode === 'combo') {
             updateComboPanel(state.selectedTarget);
         } else if (!state.selectedPart) {
-            renderPartSelection(state.selectedTarget);
+            var listEl1 = state.actionPanelEl.querySelector('#xsact-action-list');
+            var titleEl1 = state.actionPanelEl.querySelector('#xsact-panel-title');
+            if (titleEl1) titleEl1.textContent = (characterDisplayName(state.selectedTarget) || '?') + ' → 选择部位';
+            if (listEl1) listEl1.innerHTML = '<div class="xsact-qa-empty">请在左侧人物浮层选择身体部位</div>';
         } else {
             updateActionPanel(state.selectedTarget, state.selectedPart);
         }
@@ -1964,6 +1987,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             zap:      '<polygon points="13 2 4 14 11 14 10 22 20 10 13 10"/>',
             layers:   '<path d="M12 3L2 9l10 6 10-6-10-6z"/><path d="M2 15l10 6 10-6"/>',
             user:     '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
+            'triangle-left': '<path d="M18 5L7 12l11 7z" fill="currentColor" stroke="none"/>',
             settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
             sun:      '<circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>',
             moon:     '<path d="M21 12.79A9 9 0 1 1 11.21 3a7 7 0 0 0 9.79 9.79z"/>'
@@ -2176,11 +2200,12 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             tab.addEventListener('click', function() { setPanelMode(tab.dataset.mode); });
         });
 
-        // 人物列表弹出层
-        var charPopoverToggle = panel.querySelector('#xsact-char-popover-toggle');
+        // 人物列表弹出层：左侧三角形按钮 + 关闭 + 返回
+        var charPopoverTab = panel.querySelector('#xsact-char-popover-tab');
         var charPopoverClose = panel.querySelector('#xsact-char-popover-close');
-        if (charPopoverToggle) {
-            charPopoverToggle.addEventListener('click', function(e) {
+        var charPopoverBack = panel.querySelector('#xsact-char-popover-back');
+        if (charPopoverTab) {
+            charPopoverTab.addEventListener('click', function(e) {
                 e.stopPropagation();
                 toggleCharPopover();
             });
@@ -2191,10 +2216,17 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                 closeCharPopover();
             });
         }
+        if (charPopoverBack) {
+            charPopoverBack.addEventListener('click', function(e) {
+                e.stopPropagation();
+                state.popoverView = 'chars';
+                renderPopover();
+            });
+        }
         // 点击面板内部不关闭；点击面板外部关闭人物列表
         panel.addEventListener('click', function(e) {
             var popover = panel.querySelector('#xsact-char-popover');
-            if (popover && state.charListOpen && !popover.contains(e.target) && e.target !== charPopoverToggle && !(charPopoverToggle && charPopoverToggle.contains(e.target))) {
+            if (popover && state.charListOpen && !popover.contains(e.target) && e.target !== charPopoverTab && !(charPopoverTab && charPopoverTab.contains(e.target))) {
                 closeCharPopover();
             }
         });
@@ -2344,15 +2376,15 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             '#xsact-toggle-btn{',
             '  position:fixed;bottom:72px;right:16px;z-index:100000;',
             '  width:44px;height:44px;border-radius:13px;',
-            '  background:rgb(var(--xs-accent-rgb) / 0.85);border:2px solid rgb(var(--xs-accent-rgb) / 0.5);',
+            '  background:rgba(var(--xs-accent-rgb), 0.85);border:2px solid rgba(var(--xs-accent-rgb), 0.5);',
             '  color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;',
             '  backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);',
-            '  box-shadow:0 4px 16px var(--xs-shadow),0 0 8px rgb(var(--xs-accent-rgb) / 0.2);',
+            '  box-shadow:0 4px 16px var(--xs-shadow),0 0 8px rgba(var(--xs-accent-rgb), 0.2);',
             '  transition:all 0.2s ease;outline:none;',
             '}',
             '#xsact-toggle-btn:hover{',
-            '  background:rgb(var(--xs-accent-rgb) / 1);border-color:var(--xs-accent);',
-            '  box-shadow:0 6px 24px var(--xs-shadow),0 0 16px rgb(var(--xs-accent-rgb) / 0.4);',
+            '  background:rgba(var(--xs-accent-rgb), 1);border-color:var(--xs-accent);',
+            '  box-shadow:0 6px 24px var(--xs-shadow),0 0 16px rgba(var(--xs-accent-rgb), 0.4);',
             '  transform:scale(1.08);',
             '}',
             '#xsact-toggle-btn.active{',
@@ -2373,6 +2405,11 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             '  box-shadow:0 14px 44px var(--xs-shadow);',
             '  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif;',
             '  min-width:220px;min-height:300px;max-width:560px;max-height:86vh;',
+            '  transition:border-color .2s ease;',
+            '}',
+            '#xsact-qa-panel.popover-open{',
+            '  border-left-color:var(--xs-accent);',
+            '  box-shadow:0 0 24px rgba(var(--xs-accent-rgb), 0.15),0 14px 44px var(--xs-shadow);',
             '}',
             '.xsact-qa-panel-inner{',
             '  display:flex;flex-direction:column;height:100%;',
@@ -2407,14 +2444,14 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             '.xsact-mode-tab .xsact-ico{width:14px;height:14px;stroke-width:2.2px;}',
             '.xsact-mode-tab:hover{color:var(--xs-text);border-color:var(--xs-border-strong);}',
             '.xsact-mode-tab.active{',
-            '  background:rgb(var(--xs-accent-rgb) / 0.14);border-color:var(--xs-accent);color:var(--xs-accent-text);font-weight:600;',
+            '  background:rgba(var(--xs-accent-rgb), 0.14);border-color:var(--xs-accent);color:var(--xs-accent-text);font-weight:600;',
             '}',
 
             /* 类型计数徽标 */
             '.xsact-type-count{',
             '  margin-left:auto;min-width:20px;text-align:center;',
             '  font-size:11px;font-weight:700;color:var(--xs-accent-text);',
-            '  background:rgb(var(--xs-accent-rgb) / 0.16);border-radius:9px;padding:1px 7px;',
+            '  background:rgba(var(--xs-accent-rgb), 0.16);border-radius:9px;padding:1px 7px;',
             '}',
 
             '.xsact-qa-panel-body{',
@@ -2440,7 +2477,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             '  background:var(--xs-hover);border-color:var(--xs-border-strong);color:var(--xs-text);',
             '}', 
             '.xsact-action-btn.sel{',
-            '  background:rgb(var(--xs-accent-rgb) / 0.12);border-color:var(--xs-accent);border-left-color:var(--xs-accent);color:var(--xs-accent-text);',
+            '  background:rgba(var(--xs-accent-rgb), 0.12);border-color:var(--xs-accent);border-left-color:var(--xs-accent);color:var(--xs-accent-text);',
             '}',
             '.xsact-action-btn.fav{',
             '  background:rgba(232,179,57,0.12);border-color:rgba(232,179,57,0.55);border-left-color:#E8B339;color:#FCEBC0;',
@@ -2482,18 +2519,18 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             '  background:var(--xs-btn-bg);border:1px solid var(--xs-border-strong);',
             '  color:var(--xs-text-dim);display:flex;align-items:center;justify-content:center;transition:all 0.15s ease;',
             '}',
-            '.xsact-combo-run:hover{background:rgb(var(--xs-accent-rgb) / 0.18);border-color:var(--xs-accent);color:var(--xs-accent-text);}',
+            '.xsact-combo-run:hover{background:rgba(var(--xs-accent-rgb), 0.18);border-color:var(--xs-accent);color:var(--xs-accent-text);}',
             '.xsact-combo-edit:hover{background:rgba(70,224,160,0.16);border-color:#46E0A0;color:#CFFAE8;}',
             '.xsact-combo-delete:hover{background:rgba(255,92,92,0.16);border-color:#FF5C5C;color:#FFB3B3;}',
 
             '.xsact-combo-new-btn{',
             '  grid-column:1 / -1;',
             '  width:100%;padding:10px;margin-top:7px;',
-            '  background:rgb(var(--xs-accent-rgb) / 0.08);border:1px dashed rgb(var(--xs-accent-rgb) / 0.4);',
+            '  background:rgba(var(--xs-accent-rgb), 0.08);border:1px dashed rgba(var(--xs-accent-rgb), 0.4);',
             '  border-radius:8px;color:var(--xs-accent-text);font-size:12.5px;cursor:pointer;',
             '  display:flex;align-items:center;justify-content:center;gap:6px;transition:all 0.15s ease;',
             '}',
-            '.xsact-combo-new-btn:hover{background:rgb(var(--xs-accent-rgb) / 0.16);color:#fff;}',
+            '.xsact-combo-new-btn:hover{background:rgba(var(--xs-accent-rgb), 0.16);color:#fff;}',
 
             /* 预设栏 */
             '.xsact-combo-editor{grid-column:1 / -1;display:flex;flex-direction:column;gap:11px;}',
@@ -2517,7 +2554,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             '}',
             '.xsact-combo-item-num{',
             '  min-width:18px;text-align:center;font-size:10px;font-weight:700;',
-            '  color:var(--xs-accent-text);background:rgb(var(--xs-accent-rgb) / 0.16);border-radius:5px;padding:1px 0;',
+            '  color:var(--xs-accent-text);background:rgba(var(--xs-accent-rgb), 0.16);border-radius:5px;padding:1px 0;',
             '}',
             '.xsact-combo-item-part{',
             '  min-width:42px;color:var(--xs-text-faint);font-weight:500;',
@@ -2569,48 +2606,78 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             '  flex:1;display:flex;flex-direction:column;min-width:0;',
             '}',
 
-            /* ===== 人物列表弹出层 ===== */
-            '#xsact-char-popover-toggle{',
-            '  display:flex;align-items:center;gap:5px;',
-            '  padding:5px 9px;border-radius:7px;',
-            '  background:var(--xs-btn-bg);border:1px solid var(--xs-border);',
-            '  color:var(--xs-text-dim);font-size:12px;cursor:pointer;',
+            /* ===== 人物列表侧边触发按钮（左向小三角）===== */
+            '#xsact-char-popover-tab{',
+            '  position:absolute;left:-16px;top:50%;transform:translateY(-50%);',
+            '  width:16px;height:56px;',
+            '  display:flex;align-items:center;justify-content:center;',
+            '  background:var(--xs-panel-bg);border:1px solid var(--xs-border);border-right:none;',
+            '  border-radius:8px 0 0 8px;',
+            '  color:var(--xs-text-dim);cursor:pointer;',
+            '  z-index:90001;',
+            '  box-shadow:-4px 0 14px rgba(0,0,0,0.22);',
             '  transition:all .15s ease;',
             '}',
-            '#xsact-char-popover-toggle:hover{',
-            '  background:var(--xs-hover);border-color:var(--xs-border-strong);color:var(--xs-text);',
+            '#xsact-char-popover-tab:hover,',
+            '#xsact-char-popover-tab.active{',
+            '  color:var(--xs-accent);border-color:var(--xs-accent);',
+            '  box-shadow:0 0 12px rgba(var(--xs-accent-rgb), 0.35), -4px 0 14px rgba(0,0,0,0.22);',
             '}',
-            '#xsact-char-popover-toggle .xsact-ico{',
-            '  width:14px;height:14px;stroke-width:2.2px;',
+            '#xsact-char-popover-tab .xsact-ico{width:10px;height:10px;}',
+
+            /* 左右窗口联动桥接 */
+            '#xsact-popover-connector{',
+            '  display:none;position:absolute;left:-16px;top:50%;',
+            '  width:16px;height:80px;transform:translateY(-50%);',
+            '  background:linear-gradient(to right, rgba(var(--xs-accent-rgb),0.15), rgba(var(--xs-accent-rgb),0.55));',
+            '  border-top:1px solid rgba(var(--xs-accent-rgb),0.55);',
+            '  border-bottom:1px solid rgba(var(--xs-accent-rgb),0.55);',
+            '  box-shadow:0 0 16px rgba(var(--xs-accent-rgb), 0.35);',
+            '  z-index:90000;',
             '}',
-            '#xsact-char-popover-toggle.active{',
-            '  background:rgb(var(--xs-accent-rgb) / 0.14);border-color:var(--xs-accent);',
-            '  color:var(--xs-accent-text);box-shadow:0 0 12px rgb(var(--xs-accent-rgb) / 0.12);',
+            '#xsact-popover-connector::after{',
+            '  content:"";position:absolute;left:5px;top:50%;transform:translateY(-50%);',
+            '  width:0;height:0;',
+            '  border-top:4px solid transparent;',
+            '  border-bottom:4px solid transparent;',
+            '  border-left:5px solid rgba(var(--xs-accent-rgb),0.85);',
             '}',
+            '#xsact-qa-panel.popover-open #xsact-popover-connector{display:block;}',
+
+            /* ===== 人物列表弹出层 ===== */
             '.xsact-char-popover{',
-            '  position:absolute;left:-236px;top:46px;',
-            '  width:220px;max-height:calc(100% - 64px);',
-            '  display:flex;flex-direction:column;',
+            '  position:absolute;left:-256px;top:46px;',
+            '  width:240px;height:calc(100% - 64px);',
+            '  display:flex;flex-direction:column;min-height:0;',
             '  background:var(--xs-panel-bg);',
             '  border:1px solid var(--xs-accent);border-radius:12px;',
-            '  box-shadow:0 12px 40px rgba(0,0,0,0.45),0 0 0 1px rgb(var(--xs-accent-rgb) / 0.08),0 0 24px rgb(var(--xs-accent-rgb) / 0.10);',
+            '  box-shadow:0 12px 40px rgba(0,0,0,0.45),0 0 0 1px rgba(var(--xs-accent-rgb), 0.08),0 0 24px rgba(var(--xs-accent-rgb), 0.10);',
             '  backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);',
             '  z-index:10;overflow:hidden;',
             '  animation:xsact-popover-in .2s cubic-bezier(.16,1,.3,1);',
             '}',
             '.xsact-char-popover.right{',
-            '  left:calc(100% + 10px);',
+            '  left:calc(100% + 16px);',
             '}',
+            '.xsact-char-popover.show-back .xsact-char-popover-back{display:flex;}',
             '.xsact-char-popover-header{',
-            '  display:flex;justify-content:space-between;align-items:center;gap:8px;',
+            '  display:flex;justify-content:space-between;align-items:center;gap:6px;',
             '  padding:10px 12px;border-bottom:1px solid var(--xs-border);',
-            '  background:rgb(var(--xs-accent-rgb) / 0.08);',
+            '  background:rgba(var(--xs-accent-rgb), 0.08);',
+            '}',
+            '.xsact-char-popover-back{',
+            '  display:none;width:22px;height:22px;align-items:center;justify-content:center;',
+            '  background:transparent;border:1px solid transparent;border-radius:6px;',
+            '  color:var(--xs-text-dim);font-size:20px;line-height:1;cursor:pointer;',
+            '  transition:all .15s ease;',
+            '}',
+            '.xsact-char-popover-back:hover{',
+            '  background:var(--xs-hover);color:var(--xs-text);',
             '}',
             '.xsact-char-popover-title{',
-            '  display:flex;align-items:center;gap:6px;',
-            '  font-size:13px;font-weight:600;color:var(--xs-accent-text);',
+            '  flex:1;font-size:13px;font-weight:600;color:var(--xs-accent-text);',
+            '  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;',
             '}',
-            '.xsact-char-popover-title .xsact-ico{width:14px;height:14px;stroke-width:2.2px;}',
             '.xsact-char-popover-close{',
             '  width:22px;height:22px;display:flex;align-items:center;justify-content:center;',
             '  background:transparent;border:1px solid transparent;border-radius:6px;',
@@ -2620,6 +2687,13 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             '.xsact-char-popover-close:hover{',
             '  background:rgba(255,92,92,0.12);border-color:rgba(255,92,92,0.4);color:#FFB3B3;',
             '}',
+            '.xsact-char-popover-body{',
+            '  flex:1;overflow-y:auto;overflow-x:hidden;scrollbar-width:thin;scrollbar-color:var(--xs-scroll) transparent;',
+            '  display:flex;flex-direction:column;min-height:0;',
+            '}',
+            '.xsact-char-popover-body::-webkit-scrollbar{width:4px;}',
+            '.xsact-char-popover-body::-webkit-scrollbar-track{background:transparent;}',
+            '.xsact-char-popover-body::-webkit-scrollbar-thumb{background:var(--xs-scroll);border-radius:2px;}',
             '.xsact-char-popover-items{',
             '  flex:1;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--xs-scroll) transparent;',
             '  padding:6px;',
@@ -2644,7 +2718,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             '  transform:translateX(3px);',
             '}',
             '.xsact-char-popover-item.selected{',
-            '  background:rgb(var(--xs-accent-rgb) / 0.14);border-color:var(--xs-accent);',
+            '  background:rgba(var(--xs-accent-rgb), 0.14);border-color:var(--xs-accent);',
             '  color:var(--xs-accent-text);',
             '}',
             '.xsact-char-popover-item.self{',
@@ -2670,26 +2744,27 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
 
             /* ===== 人物部位选择（人物剪影 + 线框热区）===== */
             '.xsact-body-select{',
-            '  flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;',
-            '  min-height:0;padding:8px 6px;gap:8px;overflow:hidden;',
+            '  flex:1;display:flex;flex-direction:column;align-items:stretch;',
+            '  min-height:0;padding:6px 4px 0;gap:6px;overflow:hidden;',
             '}',
             '.xsact-body-svg{',
-            '  height:100%;width:auto;max-width:100%;max-height:100%;',
-            '  overflow:visible;filter:drop-shadow(0 0 10px rgb(var(--xs-accent-rgb) / 0.08));',
+            '  flex:1;min-height:0;width:auto;max-width:100%;max-height:100%;',
+            '  align-self:center;overflow:visible;',
+            '  filter:drop-shadow(0 0 10px rgba(var(--xs-accent-rgb), 0.08));',
             '}',
             '.xsact-body-silhouette ellipse,.xsact-body-silhouette rect,.xsact-body-silhouette path{',
-            '  fill:rgb(var(--xs-accent-rgb) / 0.08);',
-            '  stroke:rgb(var(--xs-accent-rgb) / 0.18);',
+            '  fill:rgba(var(--xs-accent-rgb), 0.08);',
+            '  stroke:rgba(var(--xs-accent-rgb), 0.18);',
             '  stroke-width:1;',
             '}',
             '.xsact-body-part-zone{',
-            '  fill:transparent;stroke:rgb(var(--xs-accent-rgb) / 0.55);stroke-width:1.8;',
+            '  fill:transparent;stroke:rgba(var(--xs-accent-rgb), 0.55);stroke-width:1.8;',
             '  cursor:pointer;transition:fill .15s,stroke .15s,stroke-width .15s,filter .15s;',
             '  pointer-events:all;',
             '}',
             '.xsact-body-part-zone:hover,.xsact-body-part-zone.hover{',
-            '  fill:rgb(var(--xs-accent-rgb) / 0.16);stroke:var(--xs-accent);stroke-width:2.6;',
-            '  filter:drop-shadow(0 0 6px rgb(var(--xs-accent-rgb) / 0.55));',
+            '  fill:rgba(var(--xs-accent-rgb), 0.16);stroke:var(--xs-accent);stroke-width:2.6;',
+            '  filter:drop-shadow(0 0 6px rgba(var(--xs-accent-rgb), 0.55));',
             '}',
             '.xsact-body-part-hint{',
             '  font-size:12px;color:var(--xs-text-dim);text-align:center;',
@@ -2756,7 +2831,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             '  transition:background-color .3s ease,border-color .3s ease;',
             '  border:1.5px solid var(--xs-accent);',
             '  text-shadow:0 1px 2px rgb(0 0 0 / 0.45);',
-            '  box-shadow:0 0 12px rgb(var(--xs-accent-rgb) / 0.45);',
+            '  box-shadow:0 0 12px rgba(var(--xs-accent-rgb), 0.45);',
             '  white-space:nowrap;letter-spacing:1px;',
             '  pointer-events:none;',
             '}',
