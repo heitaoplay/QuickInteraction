@@ -2,7 +2,7 @@
 // @name         快捷互动 (QuickInteraction)
 // @name:zh      快捷互动
 // @namespace    https://github.com/heitaoplay/QuickInteraction
-// @version      0.7.9
+// @version      0.7.10
 // @description  Bondage Club - 统一动作操作台。一键进入动作模式，在聊天室场景内直接点人物部位选动作，绕过原生5步嵌套菜单。
 // @author       Tao MUSE
 // @homepageURL  https://github.com/heitaoplay/QuickInteraction
@@ -39,7 +39,7 @@
         console.log.apply(console, args);
     }
 
-    const VERSION = '0.7.9';
+    const VERSION = '0.7.10';
 
     // ── 存储键 ──
     const S_ENABLED = 'xsact_qa_enabled';
@@ -72,7 +72,6 @@
         editingComboId: null,         // 正在编辑的组合 id
         favorites: [],                // 收藏动作名
         presets: [],                  // 预留预设
-        shortcuts: [],                // 快捷动作 {id,name,label,group}
         lastAction: null,             // 上次执行的动作
         toggleBtnDrawn: false,        // 浮动开关是否已绘制
         // ── UI / 渲染缓存 ──
@@ -546,6 +545,55 @@
         return packet;
     }
 
+    /** 判断动作名是否为第三方自定义动作（非 BC 原生、非 ECHO 纯中文）。
+     *  这类动作依赖发送方本地 Label，对方没装对应插件时会显示 MISSING。 */
+    function looksLikeCustomAction(name) {
+        if (!name || typeof name !== 'string') return false;
+        // 含下划线或随机 ID 后缀（如 Luzi_uc09b0）
+        if (/[_]/.test(name)) return true;
+        if (/\w\d{3,}/.test(name)) return true;
+        var hasCJK = /[\u4e00-\u9fa5]/.test(name);
+        var hasLatin = /[a-zA-Z]/.test(name);
+        // 中文与英文混合（ECHO 动作是纯中文，BC 原生是纯英文）
+        if (hasCJK && hasLatin) return true;
+        return false;
+    }
+
+    /** 将 Activity 模板渲染为纯文本，去掉 SourceCharacter 避免 Emote 重复发送者名字。 */
+    function renderActivityTemplate(template, actor, target) {
+        if (!template) return '';
+        var text = template
+            .replace(/\bSourceCharacter\b/g, '')
+            .replace(/\bTargetCharacterPossessive\b/g, (target && target.Name || '') + '的')
+            .replace(/\bTargetCharacter\b/g, target && target.Name || '')
+            .replace(/\bActivityAsset\b/g, '')
+            .replace(/\s+/g, ' ')
+            .trim();
+        return text;
+    }
+
+    /** 构造 Emote 包，用于发送方有 Label 但接收方可能没有 Label 的自定义动作。
+     *  这样对方看到的是动作文本，而不是 MISSING ACTIVITY DESCRIPTION。 */
+    function makeEmotePacket(targetChar, group, name) {
+        if (!targetChar || !name || !group) return null;
+        if (typeof ActivityDictionaryText !== 'function') return null;
+        var isSelf = Player && targetChar.MemberNumber === Player.MemberNumber;
+        var prefix = isSelf ? 'ChatSelf' : 'ChatOther';
+        var template = ActivityDictionaryText('Label-' + prefix + '-' + group + '-' + name);
+        if (!template || template.indexOf('MISSING') !== -1) {
+            // 自我动作回退到 ChatOther
+            if (isSelf) template = ActivityDictionaryText('Label-ChatOther-' + group + '-' + name);
+        }
+        if (!template || template.indexOf('MISSING') !== -1) return null;
+        var rendered = renderActivityTemplate(template, Player, targetChar);
+        if (!rendered) return null;
+        return {
+            Content: rendered,
+            Type: 'Emote',
+            Dictionary: [{ SourceCharacter: Player.MemberNumber }]
+        };
+    }
+
     /** 记录上次动作（抽取公共代码） */
     function recordLastAction(name, targetMN, part, dict) {
         state.lastAction = { name: name, targetMN: targetMN, dict: dict, part: part, time: Date.now() };
@@ -590,6 +638,23 @@
         var name = String(activityName || '');
         var group = String(groupOverride || state.selectedPart || '');
         if (!name || !group) return false;
+
+        // 第三方自定义动作：发送方有 Label，但对方未装插件时显示 MISSING。
+        // 降级为 Emote 发送纯文本，确保对方也能看到动作描述。
+        if (looksLikeCustomAction(name)) {
+            try {
+                var emotePacket = makeEmotePacket(charObj, group, name);
+                if (emotePacket) {
+                    ServerSend('ChatRoomChat', emotePacket);
+                    recordLastAction(name, charObj.MemberNumber, group, emotePacket.Dictionary);
+                    return true;
+                }
+            } catch (emoteErr) {
+                console.warn('[XSAct-QA] 自定义动作 Emote 发送失败:', emoteErr.message);
+            }
+            // 如果本地也没有 Label，继续走 Activity 流程，让 BC 提示不可用
+        }
+
         try {
             var packet = makeActivityPacket(charObj, group, name, activityItem);
             if (!packet) { toast('该动作需要特定道具', '#FF5C5C'); return false; }
