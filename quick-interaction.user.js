@@ -2,7 +2,7 @@
 // @name         快捷互动 (QuickInteraction)
 // @name:zh      快捷互动
 // @namespace    https://github.com/heitaoplay/QuickInteraction
-// @version      0.7.24
+// @version      0.7.25
 // @description  Bondage Club - 统一动作操作台。一键进入动作模式，在聊天室场景内直接点人物部位选动作，绕过原生5步嵌套菜单。
 // @author       Tao MUSE
 // @homepageURL  https://github.com/heitaoplay/QuickInteraction
@@ -46,7 +46,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         console.log.apply(console, args);
     }
 
-    const VERSION = '0.7.24';
+    const VERSION = '0.7.25';
 
     // ── 存储键 ──
     const S_ENABLED = 'xsact_qa_enabled';
@@ -1618,8 +1618,8 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         var svg = '<svg class="xsact-body-svg" viewBox="0 0 220 520" xmlns="http://www.w3.org/2000/svg">' +
             '<defs>' +
             '<linearGradient id="xsact-body-grad" x1="0" y1="0" x2="0" y2="1">' +
-            '<stop offset="0%" stop-color="rgba(var(--xs-accent-rgb), 0.10)"/>' +
-            '<stop offset="100%" stop-color="rgba(var(--xs-accent-rgb), 0.02)"/>' +
+            '<stop offset="0%" stop-color="rgba(var(--xs-accent-rgb), 0.06)"/>' +
+            '<stop offset="100%" stop-color="rgba(var(--xs-accent-rgb), 0.01)"/>' +
             '</linearGradient>' +
             '<filter id="xsact-body-glow" x="-50%" y="-50%" width="200%" height="200%">' +
             '<feGaussianBlur stdDeviation="2.5" result="blur"/>' +
@@ -2753,18 +2753,18 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             '  filter:drop-shadow(0 0 10px rgba(var(--xs-accent-rgb), 0.08));',
             '}',
             '.xsact-body-silhouette ellipse,.xsact-body-silhouette rect,.xsact-body-silhouette path{',
-            '  fill:rgba(var(--xs-accent-rgb), 0.08);',
-            '  stroke:rgba(var(--xs-accent-rgb), 0.18);',
+            '  fill:rgba(var(--xs-accent-rgb), 0.04);',
+            '  stroke:rgba(var(--xs-accent-rgb), 0.12);',
             '  stroke-width:1;',
             '}',
             '.xsact-body-part-zone{',
-            '  fill:transparent;stroke:rgba(var(--xs-accent-rgb), 0.55);stroke-width:1.8;',
-            '  cursor:pointer;transition:fill .15s,stroke .15s,stroke-width .15s,filter .15s;',
+            '  fill:rgba(255,255,255,0.05);stroke:rgba(var(--xs-accent-rgb), 0.90);stroke-width:2;',
+            '  cursor:pointer;transition:fill .12s,stroke .12s,stroke-width .12s,filter .12s;',
             '  pointer-events:all;',
             '}',
             '.xsact-body-part-zone:hover,.xsact-body-part-zone.hover{',
-            '  fill:rgba(var(--xs-accent-rgb), 0.16);stroke:var(--xs-accent);stroke-width:2.6;',
-            '  filter:drop-shadow(0 0 6px rgba(var(--xs-accent-rgb), 0.55));',
+            '  fill:rgba(var(--xs-accent-rgb), 0.22);stroke:#fff;stroke-width:3;',
+            '  filter:drop-shadow(0 0 8px rgba(var(--xs-accent-rgb), 0.85));',
             '}',
             '.xsact-body-part-hint{',
             '  font-size:12px;color:var(--xs-text-dim);text-align:center;',
