@@ -2,7 +2,7 @@
 // @name         快捷互动 (QuickInteraction)
 // @name:zh      快捷互动
 // @namespace    https://github.com/heitaoplay/QuickInteraction
-// @version      0.7.22
+// @version      0.7.23
 // @description  Bondage Club - 统一动作操作台。一键进入动作模式，在聊天室场景内直接点人物部位选动作，绕过原生5步嵌套菜单。
 // @author       Tao MUSE
 // @homepageURL  https://github.com/heitaoplay/QuickInteraction
@@ -46,7 +46,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         console.log.apply(console, args);
     }
 
-    const VERSION = '0.7.22';
+    const VERSION = '0.7.23';
 
     // ── 存储键 ──
     const S_ENABLED = 'xsact_qa_enabled';
@@ -72,7 +72,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         selectedActionItem: null,     // 当前选中动作绑定的道具
         panelMode: 'part',            // 'part'=单部位 | 'combo'=自定义组合
         showNames: false,             // 是否显示角色名字浮层
-        charListOpen: false,          // 人物列表侧边栏是否展开
+        charListOpen: false,          // 人物列表弹出层是否打开
         allModeActive: false,         // 全员范围开关
         favModeActive: false,         // 收藏模式开关
         selfModeActive: false,        // 自己模式开关
@@ -1146,26 +1146,20 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
     <span class="xsact-panel-grip" id="xsact-drag-grip" title="拖动面板">' + svgIcon('grip', 16) + '</span>\
     <span id="xsact-panel-title">选择部位...</span>\
     <span class="xsact-panel-head-actions">\
+      <button class="xsact-qa-mini-btn" id="xsact-char-popover-toggle" title="展开人物列表">' + svgIcon('users', 15) + '<span>人物</span></button>\
       <button class="xsact-qa-mini-btn" id="xsact-theme-btn" title="切换深色/浅色主题"><span class="xsact-theme-icon sun">' + svgIcon('sun', 15) + '</span><span class="xsact-theme-icon moon">' + svgIcon('moon', 15) + '</span></button>\
       <button class="xsact-qa-mini-btn" id="xsact-refresh-btn" title="刷新当前部位/人物的动作列表状态">' + svgIcon('refresh', 15) + '</button>\
       <button class="xsact-qa-mini-btn" id="xsact-exit-panel-btn" title="退出快速动作模式 (Esc)">' + svgIcon('close', 15) + '</button>\
     </span>\
   </div>\
   <div class="xsact-qa-panel-content">\
-    <div class="xsact-char-list" id="xsact-char-list">\
-      <button class="xsact-char-list-toggle" id="xsact-char-list-toggle" title="展开/收起人物列表">' + svgIcon('users', 14) + '<span>人物</span></button>\
-      <div class="xsact-char-list-body" id="xsact-char-list-body">\
-        <div class="xsact-char-list-header">人物列表</div>\
-        <div class="xsact-char-list-items" id="xsact-char-list-items"></div>\
-      </div>\
-    </div>\
     <div class="xsact-qa-panel-main">\
       <div class="xsact-qa-mode-tabs">\
         <button class="xsact-mode-tab active" data-mode="part" title="单部位动作：点人物部位后直接触发">' + svgIcon('target', 14) + '<span>动作</span></button>\
         <button class="xsact-mode-tab" data-mode="combo" title="组合动作：手动拼装多部位动作并一键执行">' + svgIcon('layers', 14) + '<span>组合动作</span></button>\
       </div>\
       <div class="xsact-qa-panel-body" id="xsact-action-list">\
-        <div class="xsact-qa-empty">请在左侧人物列表中选择目标</div>\
+        <div class="xsact-qa-empty">请在上方点击「人物」按钮选择目标</div>\
       </div>\
     </div>\
   </div>\
@@ -1179,6 +1173,13 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
   </div>\
   <div class="xsact-qa-state.presets-bar" id="xsact-state.presets-bar"></div>\
   <div class="xsact-resize-handle" id="xsact-resize-handle" title="拖动缩放面板">' + svgIcon('resize', 14) + '</div>\
+</div>\
+<div class="xsact-char-popover" id="xsact-char-popover" style="display:none;">\
+  <div class="xsact-char-popover-header">\
+    <span class="xsact-char-popover-title">' + svgIcon('users', 14) + '<span>人物列表</span></span>\
+    <button class="xsact-char-popover-close" id="xsact-char-popover-close" title="关闭">×</button>\
+  </div>\
+  <div class="xsact-char-popover-items" id="xsact-char-popover-items"></div>\
 </div>';
     }
 
@@ -1570,36 +1571,72 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                 btn.classList.remove('active');
             });
         });
+        closeCharPopover();
         renderCharList();
         renderPanel();
     }
 
-    /** 渲染人物列表侧边栏 */
+    /** 渲染人物列表弹出层 */
     function renderCharList() {
-        var listEl = state.actionPanelEl && state.actionPanelEl.querySelector('#xsact-char-list-items');
+        var listEl = state.actionPanelEl && state.actionPanelEl.querySelector('#xsact-char-popover-items');
         if (!listEl) return;
         var chars = getRoomCharacters();
         if (chars.length === 0) {
-            listEl.innerHTML = '<div class="xsact-char-list-empty">房间无人</div>';
+            listEl.innerHTML = '<div class="xsact-char-popover-empty">房间无人</div>';
             return;
         }
         var html = '';
         chars.forEach(function(c) {
             var isSelf = c.IsPlayer && c.IsPlayer();
             var selected = state.selectedTarget && state.selectedTarget.MemberNumber === c.MemberNumber;
-            html += '<div class="xsact-char-list-item' + (selected ? ' selected' : '') + (isSelf ? ' self' : '') + '" data-mn="' + c.MemberNumber + '">' +
-                '<span class="xsact-char-list-name">' + escapeHtml(characterDisplayName(c)) + '</span>' +
-                (isSelf ? '<span class="xsact-char-list-self">自己</span>' : '') +
+            html += '<div class="xsact-char-popover-item' + (selected ? ' selected' : '') + (isSelf ? ' self' : '') + '" data-mn="' + c.MemberNumber + '">' +
+                '<span class="xsact-char-popover-name">' + escapeHtml(characterDisplayName(c)) + '</span>' +
+                (isSelf ? '<span class="xsact-char-popover-self">自己</span>' : '') +
                 '</div>';
         });
         listEl.innerHTML = html;
-        listEl.querySelectorAll('.xsact-char-list-item').forEach(function(item) {
+        listEl.querySelectorAll('.xsact-char-popover-item').forEach(function(item) {
             item.addEventListener('click', function() {
                 var mn = parseInt(item.dataset.mn, 10);
                 var c = chars.find(function(x) { return x.MemberNumber === mn; });
                 if (c) selectCharacterFromList(c);
             });
         });
+    }
+
+    /** 打开人物列表弹出层 */
+    function openCharPopover() {
+        if (!state.actionPanelEl) return;
+        var popover = state.actionPanelEl.querySelector('#xsact-char-popover');
+        var toggle = state.actionPanelEl.querySelector('#xsact-char-popover-toggle');
+        if (!popover) return;
+        // 智能定位：若面板左侧空间不足，则弹出层显示在右侧
+        var rect = state.actionPanelEl.getBoundingClientRect();
+        if (rect.left < 240) {
+            popover.classList.add('right');
+        } else {
+            popover.classList.remove('right');
+        }
+        popover.style.display = 'flex';
+        state.charListOpen = true;
+        if (toggle) toggle.classList.add('active');
+        renderCharList();
+    }
+
+    /** 关闭人物列表弹出层 */
+    function closeCharPopover() {
+        if (!state.actionPanelEl) return;
+        var popover = state.actionPanelEl.querySelector('#xsact-char-popover');
+        var toggle = state.actionPanelEl.querySelector('#xsact-char-popover-toggle');
+        if (popover) popover.style.display = 'none';
+        state.charListOpen = false;
+        if (toggle) toggle.classList.remove('active');
+    }
+
+    /** 切换人物列表弹出层 */
+    function toggleCharPopover() {
+        if (state.charListOpen) closeCharPopover();
+        else openCharPopover();
     }
 
     /** 渲染人物部位选择视图 — 使用 SVG 人物剪影 + 线框热区 */
@@ -1713,7 +1750,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             var listEl0 = state.actionPanelEl.querySelector('#xsact-action-list');
             var titleEl0 = state.actionPanelEl.querySelector('#xsact-panel-title');
             if (titleEl0) titleEl0.textContent = (state.panelMode === 'combo') ? '选择人物...' : '选择动作...';
-            if (listEl0) listEl0.innerHTML = '<div class="xsact-qa-empty">请在左侧「人物」列表中选择目标</div>';
+            if (listEl0) listEl0.innerHTML = '<div class="xsact-qa-empty">请在上方点击「人物」按钮选择目标</div>';
             return;
         }
         if (state.panelMode === 'combo') {
@@ -2139,15 +2176,28 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             tab.addEventListener('click', function() { setPanelMode(tab.dataset.mode); });
         });
 
-        // 人物列表侧边栏展开/收起按钮
-        var charListToggle = panel.querySelector('#xsact-char-list-toggle');
-        var charList = panel.querySelector('#xsact-char-list');
-        if (charListToggle && charList) {
-            charListToggle.addEventListener('click', function() {
-                state.charListOpen = !state.charListOpen;
-                charList.classList.toggle('open', state.charListOpen);
+        // 人物列表弹出层
+        var charPopoverToggle = panel.querySelector('#xsact-char-popover-toggle');
+        var charPopoverClose = panel.querySelector('#xsact-char-popover-close');
+        if (charPopoverToggle) {
+            charPopoverToggle.addEventListener('click', function(e) {
+                e.stopPropagation();
+                toggleCharPopover();
             });
         }
+        if (charPopoverClose) {
+            charPopoverClose.addEventListener('click', function(e) {
+                e.stopPropagation();
+                closeCharPopover();
+            });
+        }
+        // 点击面板内部不关闭；点击面板外部关闭人物列表
+        panel.addEventListener('click', function(e) {
+            var popover = panel.querySelector('#xsact-char-popover');
+            if (popover && state.charListOpen && !popover.contains(e.target) && e.target !== charPopoverToggle && !(charPopoverToggle && charPopoverToggle.contains(e.target))) {
+                closeCharPopover();
+            }
+        });
 
         // 全员执行按钮：切换全员范围开关
         var allBtn = panel.querySelector('#xsact-all-btn');
@@ -2318,13 +2368,16 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             '  position:fixed;top:48px;right:12px;width:300px;height:520px;z-index:90000;',
             '  background:var(--xs-panel-bg);border-radius:14px;',
             '  border:1px solid var(--xs-border);',
-            '  display:flex;flex-direction:column;overflow:hidden;',
+            '  display:flex;flex-direction:column;',
             '  backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);',
             '  box-shadow:0 14px 44px var(--xs-shadow);',
             '  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif;',
             '  min-width:220px;min-height:300px;max-width:560px;max-height:86vh;',
             '}',
-            '.xsact-qa-panel-inner{display:flex;flex-direction:column;height:100%;}',
+            '.xsact-qa-panel-inner{',
+            '  display:flex;flex-direction:column;height:100%;',
+            '  overflow:hidden;border-radius:14px;',
+            '}',
 
             /* 标题栏 = 拖拽手柄 */
             '.xsact-qa-panel-header{',
@@ -2508,85 +2561,111 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             '#xsact-fav-clear-btn{padding:0;width:28px;height:28px;color:var(--xs-text-dim);}',
             '#xsact-fav-clear-btn:hover{background:rgba(255,92,92,0.12);border-color:rgba(255,92,92,0.5);color:#FFB3B3;}',
 
-            /* ===== 人物列表侧边栏 ===== */
             '.xsact-qa-panel-content{',
-            '  flex:1;position:relative;padding-left:32px;overflow:hidden;min-height:0;',
+            '  flex:1;position:relative;display:flex;flex-direction:column;',
+            '  overflow:hidden;min-height:0;',
             '}',
             '.xsact-qa-panel-main{',
             '  flex:1;display:flex;flex-direction:column;min-width:0;',
             '}',
-            '.xsact-char-list{',
-            '  position:absolute;left:0;top:0;bottom:0;',
-            '  display:flex;flex-direction:row;',
-            '  width:32px;min-width:32px;',
-            '  border-right:1px solid var(--xs-border);border-radius:0 10px 10px 0;',
-            '  background:var(--xs-panel-bg);',
-            '  overflow:hidden;transition:width .22s ease,left .22s ease,box-shadow .22s ease;',
-            '  z-index:5;',
-            '  box-shadow:2px 0 10px rgba(0,0,0,0.15);',
-            '}',
-            '.xsact-char-list.open{',
-            '  width:140px;left:-108px;',
-            '  box-shadow:4px 0 24px rgba(0,0,0,0.35);',
-            '}',
-            '.xsact-char-list-toggle{',
-            '  width:32px;min-width:32px;',
-            '  padding:8px 0;',
-            '  background:var(--xs-btn-bg);border:none;border-right:1px solid var(--xs-border);',
+
+            /* ===== 人物列表弹出层 ===== */
+            '#xsact-char-popover-toggle{',
+            '  display:flex;align-items:center;gap:5px;',
+            '  padding:5px 9px;border-radius:7px;',
+            '  background:var(--xs-btn-bg);border:1px solid var(--xs-border);',
             '  color:var(--xs-text-dim);font-size:12px;cursor:pointer;',
-            '  display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:6px;',
-            '  transition:background .15s,color .15s;',
+            '  transition:all .15s ease;',
             '}',
-            '.xsact-char-list-toggle:hover{',
-            '  background:var(--xs-hover);color:var(--xs-text);',
+            '#xsact-char-popover-toggle:hover{',
+            '  background:var(--xs-hover);border-color:var(--xs-border-strong);color:var(--xs-text);',
             '}',
-            '.xsact-char-list-toggle .xsact-ico{width:14px;height:14px;stroke-width:2.2px;}',
-            '.xsact-char-list-toggle span{',
-            '  writing-mode:vertical-rl;letter-spacing:2px;margin-top:4px;',
+            '#xsact-char-popover-toggle .xsact-ico{',
+            '  width:14px;height:14px;stroke-width:2.2px;',
             '}',
-            '.xsact-char-list-body{',
-            '  flex:1;display:flex;flex-direction:column;',
-            '  min-width:0;overflow:hidden;',
+            '#xsact-char-popover-toggle.active{',
+            '  background:rgb(var(--xs-accent-rgb) / 0.14);border-color:var(--xs-accent);',
+            '  color:var(--xs-accent-text);box-shadow:0 0 12px rgb(var(--xs-accent-rgb) / 0.12);',
             '}',
-            '.xsact-char-list-header{',
-            '  padding:8px 10px;font-size:12px;font-weight:600;',
-            '  color:var(--xs-text-dim);border-bottom:1px solid var(--xs-border);',
-            '  white-space:nowrap;',
+            '.xsact-char-popover{',
+            '  position:absolute;left:-236px;top:46px;',
+            '  width:220px;max-height:calc(100% - 64px);',
+            '  display:flex;flex-direction:column;',
+            '  background:var(--xs-panel-bg);',
+            '  border:1px solid var(--xs-accent);border-radius:12px;',
+            '  box-shadow:0 12px 40px rgba(0,0,0,0.45),0 0 0 1px rgb(var(--xs-accent-rgb) / 0.08),0 0 24px rgb(var(--xs-accent-rgb) / 0.10);',
+            '  backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);',
+            '  z-index:10;overflow:hidden;',
+            '  animation:xsact-popover-in .2s cubic-bezier(.16,1,.3,1);',
             '}',
-            '.xsact-char-list-items{',
-            '  flex:1;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--xs-scroll) transparent;',
+            '.xsact-char-popover.right{',
+            '  left:calc(100% + 10px);',
             '}',
-            '.xsact-char-list-items::-webkit-scrollbar{width:4px;}',
-            '.xsact-char-list-items::-webkit-scrollbar-track{background:transparent;}',
-            '.xsact-char-list-items::-webkit-scrollbar-thumb{background:var(--xs-scroll);border-radius:2px;}',
-            '.xsact-char-list-empty{',
-            '  padding:14px 10px;font-size:12px;color:var(--xs-text-faint);text-align:center;',
+            '.xsact-char-popover-header{',
+            '  display:flex;justify-content:space-between;align-items:center;gap:8px;',
+            '  padding:10px 12px;border-bottom:1px solid var(--xs-border);',
+            '  background:rgb(var(--xs-accent-rgb) / 0.08);',
             '}',
-            '.xsact-char-list-item{',
-            '  padding:9px 10px;cursor:pointer;',
+            '.xsact-char-popover-title{',
             '  display:flex;align-items:center;gap:6px;',
-            '  border-bottom:1px solid rgba(0,0,0,0);',
-            '  transition:background .12s,color .12s;',
-            '  font-size:12px;color:var(--xs-text-dim);',
+            '  font-size:13px;font-weight:600;color:var(--xs-accent-text);',
             '}',
-            '.xsact-char-list-item:hover{',
-            '  background:var(--xs-hover);color:var(--xs-text);',
+            '.xsact-char-popover-title .xsact-ico{width:14px;height:14px;stroke-width:2.2px;}',
+            '.xsact-char-popover-close{',
+            '  width:22px;height:22px;display:flex;align-items:center;justify-content:center;',
+            '  background:transparent;border:1px solid transparent;border-radius:6px;',
+            '  color:var(--xs-text-dim);font-size:17px;line-height:1;cursor:pointer;',
+            '  transition:all .15s ease;',
             '}',
-            '.xsact-char-list-item.selected{',
-            '  background:rgb(var(--xs-accent-rgb) / 0.14);color:var(--xs-accent-text);',
+            '.xsact-char-popover-close:hover{',
+            '  background:rgba(255,92,92,0.12);border-color:rgba(255,92,92,0.4);color:#FFB3B3;',
             '}',
-            '.xsact-char-list-item.self{',
-            '  color:#46E0A0;',
+            '.xsact-char-popover-items{',
+            '  flex:1;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--xs-scroll) transparent;',
+            '  padding:6px;',
             '}',
-            '.xsact-char-list-item.self.selected{',
-            '  background:rgba(70,224,160,0.14);color:#46E0A0;',
+            '.xsact-char-popover-items::-webkit-scrollbar{width:4px;}',
+            '.xsact-char-popover-items::-webkit-scrollbar-track{background:transparent;}',
+            '.xsact-char-popover-items::-webkit-scrollbar-thumb{background:var(--xs-scroll);border-radius:2px;}',
+            '.xsact-char-popover-empty{',
+            '  padding:16px 10px;font-size:12px;color:var(--xs-text-faint);text-align:center;',
             '}',
-            '.xsact-char-list-name{',
+            '.xsact-char-popover-item{',
+            '  display:flex;align-items:center;gap:8px;',
+            '  padding:9px 10px;margin-bottom:4px;',
+            '  border-radius:8px;cursor:pointer;',
+            '  background:var(--xs-panel-bg-2);border:1px solid var(--xs-border);',
+            '  color:var(--xs-text-dim);font-size:12.5px;',
+            '  transition:all .12s ease;',
+            '}',
+            '.xsact-char-popover-item:last-child{margin-bottom:0;}',
+            '.xsact-char-popover-item:hover{',
+            '  background:var(--xs-hover);border-color:var(--xs-border-strong);color:var(--xs-text);',
+            '  transform:translateX(3px);',
+            '}',
+            '.xsact-char-popover-item.selected{',
+            '  background:rgb(var(--xs-accent-rgb) / 0.14);border-color:var(--xs-accent);',
+            '  color:var(--xs-accent-text);',
+            '}',
+            '.xsact-char-popover-item.self{',
+            '  color:#46E0A0;border-color:rgba(70,224,160,0.25);',
+            '}',
+            '.xsact-char-popover-item.self:hover{',
+            '  background:rgba(70,224,160,0.08);border-color:rgba(70,224,160,0.5);color:#CFFAE8;',
+            '}',
+            '.xsact-char-popover-item.self.selected{',
+            '  background:rgba(70,224,160,0.14);border-color:#46E0A0;color:#46E0A0;',
+            '}',
+            '.xsact-char-popover-name{',
             '  flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;',
             '}',
-            '.xsact-char-list-self{',
-            '  flex-shrink:0;font-size:9px;padding:1px 4px;border-radius:4px;',
+            '.xsact-char-popover-self{',
+            '  flex-shrink:0;font-size:9px;padding:2px 5px;border-radius:4px;',
             '  background:rgba(70,224,160,0.15);color:#46E0A0;',
+            '}',
+            '@keyframes xsact-popover-in{',
+            '  from{opacity:0;transform:translateY(-8px) scale(.96);}',
+            '  to{opacity:1;transform:translateY(0) scale(1);}',
             '}',
 
             /* ===== 人物部位选择（人物剪影 + 线框热区）===== */
