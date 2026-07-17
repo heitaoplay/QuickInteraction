@@ -2,7 +2,7 @@
 // @name         快捷互动 (QuickInteraction)
 // @name:zh      快捷互动
 // @namespace    https://github.com/heitaoplay/QuickInteraction
-// @version      0.7.20
+// @version      0.7.21
 // @description  Bondage Club - 统一动作操作台。一键进入动作模式，在聊天室场景内直接点人物部位选动作，绕过原生5步嵌套菜单。
 // @author       Tao MUSE
 // @homepageURL  https://github.com/heitaoplay/QuickInteraction
@@ -39,7 +39,7 @@
         console.log.apply(console, args);
     }
 
-    const VERSION = '0.7.20';
+    const VERSION = '0.7.21';
 
     // ── 存储键 ──
     const S_ENABLED = 'xsact_qa_enabled';
@@ -1595,24 +1595,99 @@
         });
     }
 
-    /** 渲染人物部位选择视图 */
+    /** 渲染人物部位选择视图 — 使用 SVG 人物剪影 + 线框热区 */
     function renderPartSelection(charObj) {
         var listEl = state.actionPanelEl.querySelector('#xsact-action-list');
         var titleEl = state.actionPanelEl.querySelector('#xsact-panel-title');
         if (!listEl) return;
         if (titleEl) titleEl.textContent = (characterDisplayName(charObj) || '?') + ' → 选择部位';
-        var html = '<div class="xsact-part-grid">';
-        BODY_PARTS.forEach(function(part) {
-            html += '<button class="xsact-part-tile" data-group="' + part.group + '" title="' + part.group + '">' +
-                '<span class="xsact-part-tile-icon">' + part.icon + '</span>' +
-                '<span class="xsact-part-tile-label">' + escapeHtml(part.label) + '</span>' +
-                '</button>';
-        });
-        html += '</div>';
-        listEl.innerHTML = html;
-        listEl.querySelectorAll('.xsact-part-tile').forEach(function(btn) {
-            btn.addEventListener('click', function() {
-                state.selectedPart = btn.dataset.group;
+
+        var svg = '<svg class="xsact-body-svg" viewBox="0 0 220 520" xmlns="http://www.w3.org/2000/svg">' +
+            '<defs>' +
+            '<linearGradient id="xsact-body-grad" x1="0" y1="0" x2="0" y2="1">' +
+            '<stop offset="0%" stop-color="rgb(var(--xs-accent-rgb) / 0.10)"/>' +
+            '<stop offset="100%" stop-color="rgb(var(--xs-accent-rgb) / 0.02)"/>' +
+            '</linearGradient>' +
+            '<filter id="xsact-body-glow" x="-50%" y="-50%" width="200%" height="200%">' +
+            '<feGaussianBlur stdDeviation="2.5" result="blur"/>' +
+            '<feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>' +
+            '</filter>' +
+            '</defs>' +
+
+            <!-- 背景人物剪影 -->' +
+            '<g class="xsact-body-silhouette">' +
+            '<ellipse cx="110" cy="65" rx="45" ry="53"/>' +
+            '<rect x="85" y="110" width="50" height="42" rx="16"/>' +
+            '<path d="M 70 155 L 150 155 L 145 270 L 75 270 Z"/>' +
+            '<rect x="34" y="165" width="25" height="125" rx="13" transform="rotate(5 46 227)"/>' +
+            '<rect x="161" y="165" width="25" height="125" rx="13" transform="rotate(-5 173 227)"/>' +
+            '<ellipse cx="46" cy="305" rx="13" ry="18"/>' +
+            '<ellipse cx="174" cy="305" rx="13" ry="18"/>' +
+            '<path d="M 72 275 L 148 275 L 152 330 L 68 330 Z"/>' +
+            '<rect x="78" y="330" width="26" height="155" rx="10"/>' +
+            '<rect x="116" y="330" width="26" height="155" rx="10"/>' +
+            '<ellipse cx="91" cy="495" rx="16" ry="11"/>' +
+            '<ellipse cx="129" cy="495" rx="16" ry="11"/>' +
+            '</g>' +
+
+            <!-- 头套 -->' +
+            '<ellipse class="xsact-body-part-zone" data-group="ItemHood" cx="110" cy="65" rx="48" ry="56" data-label="头套"/>' +
+            '<ellipse class="xsact-body-part-zone" data-group="ItemHead" cx="110" cy="65" rx="39" ry="47" data-label="头"/>' +
+            '<ellipse class="xsact-body-part-zone" data-group="ItemEars" cx="73" cy="65" rx="8" ry="14" data-label="耳"/>' +
+            '<ellipse class="xsact-body-part-zone" data-group="ItemEars" cx="147" cy="65" rx="8" ry="14" data-label="耳"/>' +
+            '<ellipse class="xsact-body-part-zone" data-group="ItemNose" cx="110" cy="56" rx="7" ry="10" data-label="鼻"/>' +
+            '<ellipse class="xsact-body-part-zone" data-group="ItemMouth" cx="110" cy="86" rx="20" ry="11" data-label="口"/>' +
+            '<ellipse class="xsact-body-part-zone" data-group="ItemMouth2" cx="86" cy="88" rx="12" ry="8" data-label="口2"/>' +
+            '<ellipse class="xsact-body-part-zone" data-group="ItemMouth3" cx="134" cy="88" rx="12" ry="8" data-label="口3"/>' +
+
+            '<rect class="xsact-body-part-zone" data-group="ItemNeck" x="86" y="112" width="48" height="38" rx="14" data-label="颈"/>' +
+            '<rect class="xsact-body-part-zone" data-group="ItemNeckAccessories" x="76" y="120" width="10" height="22" rx="4" data-label="颈饰"/>' +
+            '<rect class="xsact-body-part-zone" data-group="ItemNeckAccessories" x="134" y="120" width="10" height="22" rx="4" data-label="颈饰"/>' +
+            '<rect class="xsact-body-part-zone" data-group="ItemNeckRestraints" x="95" y="116" width="30" height="12" rx="4" data-label="颈束"/>' +
+
+            '<rect class="xsact-body-part-zone" data-group="ItemBreast" x="68" y="155" width="84" height="55" rx="16" data-label="胸"/>' +
+            '<ellipse class="xsact-body-part-zone" data-group="ItemNipples" cx="88" cy="183" rx="14" ry="10" data-label="乳"/>' +
+            '<ellipse class="xsact-body-part-zone" data-group="ItemNipples" cx="132" cy="183" rx="14" ry="10" data-label="乳"/>' +
+            '<ellipse class="xsact-body-part-zone" data-group="ItemNipplesPiercings" cx="88" cy="183" rx="6" ry="5" data-label="乳穿"/>' +
+            '<ellipse class="xsact-body-part-zone" data-group="ItemNipplesPiercings" cx="132" cy="183" rx="6" ry="5" data-label="乳穿"/>' +
+
+            '<rect class="xsact-body-part-zone" data-group="ItemTorso" x="72" y="213" width="76" height="52" rx="12" data-label="躯干"/>' +
+            '<rect class="xsact-body-part-zone" data-group="ItemTorso2" x="76" y="270" width="68" height="42" rx="12" data-label="腹"/>' +
+
+            '<rect class="xsact-body-part-zone" data-group="ItemArms" x="34" y="165" width="25" height="110" rx="13" transform="rotate(5 46 220)" data-label="手臂"/>' +
+            '<rect class="xsact-body-part-zone" data-group="ItemArms" x="161" y="165" width="25" height="110" rx="13" transform="rotate(-5 173 220)" data-label="手臂"/>' +
+            '<ellipse class="xsact-body-part-zone" data-group="ItemHands" cx="46" cy="290" rx="11" ry="16" data-label="手"/>' +
+            '<ellipse class="xsact-body-part-zone" data-group="ItemHands" cx="174" cy="290" rx="11" ry="16" data-label="手"/>' +
+
+            '<path class="xsact-body-part-zone" data-group="ItemPelvis" d="M 72 318 L 148 318 L 150 365 L 70 365 Z" data-label="腰臀"/>' +
+            '<ellipse class="xsact-body-part-zone" data-group="ItemVulva" cx="110" cy="345" rx="18" ry="12" data-label="私处"/>' +
+            '<ellipse class="xsact-body-part-zone" data-group="ItemVulvaPiercings" cx="110" cy="345" rx="8" ry="5" data-label="阴穿"/>' +
+            '<ellipse class="xsact-body-part-zone" data-group="ItemButt" cx="110" cy="360" rx="28" ry="16" data-label="臀后"/>' +
+
+            '<rect class="xsact-body-part-zone" data-group="ItemLegs" x="78" y="370" width="26" height="120" rx="10" data-label="腿"/>' +
+            '<rect class="xsact-body-part-zone" data-group="ItemLegs" x="116" y="370" width="26" height="120" rx="10" data-label="腿"/>' +
+            '<ellipse class="xsact-body-part-zone" data-group="ItemFeet" cx="91" cy="498" rx="14" ry="9" data-label="脚"/>' +
+            '<ellipse class="xsact-body-part-zone" data-group="ItemFeet" cx="129" cy="498" rx="14" ry="9" data-label="脚"/>' +
+            '<ellipse class="xsact-body-part-zone" data-group="ItemBoots" cx="91" cy="498" rx="16" ry="11" data-label="靴"/>' +
+            '<ellipse class="xsact-body-part-zone" data-group="ItemBoots" cx="129" cy="498" rx="16" ry="11" data-label="靴"/>' +
+            '</svg>' +
+            '<div class="xsact-body-part-hint">点击身体部位选择动作</div>';
+
+        listEl.innerHTML = '<div class="xsact-body-select">' + svg + '</div>';
+
+        var hint = listEl.querySelector('.xsact-body-part-hint');
+        listEl.querySelectorAll('.xsact-body-part-zone').forEach(function(zone) {
+            zone.addEventListener('mouseenter', function() {
+                var label = zone.dataset.label || zone.dataset.group;
+                if (hint) hint.textContent = label;
+                zone.classList.add('hover');
+            });
+            zone.addEventListener('mouseleave', function() {
+                if (hint) hint.textContent = '点击身体部位选择动作';
+                zone.classList.remove('hover');
+            });
+            zone.addEventListener('click', function() {
+                state.selectedPart = zone.dataset.group;
                 renderPanel();
             });
         });
@@ -2428,19 +2503,24 @@
 
             /* ===== 人物列表侧边栏 ===== */
             '.xsact-qa-panel-content{',
-            '  flex:1;display:flex;overflow:hidden;min-height:0;',
+            '  flex:1;position:relative;padding-left:32px;overflow:hidden;min-height:0;',
             '}',
             '.xsact-qa-panel-main{',
             '  flex:1;display:flex;flex-direction:column;min-width:0;',
             '}',
             '.xsact-char-list{',
+            '  position:absolute;left:0;top:0;bottom:0;',
             '  display:flex;flex-direction:row;',
             '  width:32px;min-width:32px;',
-            '  border-right:1px solid var(--xs-border);',
-            '  overflow:hidden;transition:width .22s ease;',
+            '  border-right:1px solid var(--xs-border);border-radius:0 10px 10px 0;',
+            '  background:var(--xs-panel-bg);',
+            '  overflow:hidden;transition:width .22s ease,left .22s ease,box-shadow .22s ease;',
+            '  z-index:5;',
+            '  box-shadow:2px 0 10px rgba(0,0,0,0.15);',
             '}',
             '.xsact-char-list.open{',
-            '  width:140px;',
+            '  width:140px;left:-108px;',
+            '  box-shadow:4px 0 24px rgba(0,0,0,0.35);',
             '}',
             '.xsact-char-list-toggle{',
             '  width:32px;min-width:32px;',
@@ -2502,26 +2582,34 @@
             '  background:rgba(70,224,160,0.15);color:#46E0A0;',
             '}',
 
-            /* ===== 人物部位选择网格 ===== */
-            '.xsact-part-grid{',
-            '  grid-column:1 / -1;',
-            '  display:grid;grid-template-columns:repeat(auto-fill, minmax(70px, 1fr));gap:7px;',
-            '  padding:4px 2px;',
+            /* ===== 人物部位选择（人物剪影 + 线框热区）===== */
+            '.xsact-body-select{',
+            '  flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;',
+            '  min-height:0;padding:8px 6px;gap:8px;overflow:hidden;',
             '}',
-            '.xsact-part-tile{',
-            '  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;',
-            '  padding:10px 6px;min-height:68px;',
-            '  background:var(--xs-panel-bg-2);border:1px solid var(--xs-border);border-radius:9px;',
-            '  cursor:pointer;color:var(--xs-text-dim);',
-            '  transition:background .15s,border-color .15s,color .15s,box-shadow .15s;',
+            '.xsact-body-svg{',
+            '  height:100%;width:auto;max-width:100%;max-height:100%;',
+            '  overflow:visible;filter:drop-shadow(0 0 10px rgb(var(--xs-accent-rgb) / 0.08));',
             '}',
-            '.xsact-part-tile:hover{',
-            '  background:var(--xs-hover);border-color:var(--xs-border-strong);color:var(--xs-text);',
-            '  box-shadow:0 0 12px rgb(var(--xs-accent-rgb) / 0.12);',
+            '.xsact-body-silhouette ellipse,.xsact-body-silhouette rect,.xsact-body-silhouette path{',
+            '  fill:rgb(var(--xs-accent-rgb) / 0.08);',
+            '  stroke:rgb(var(--xs-accent-rgb) / 0.18);',
+            '  stroke-width:1;',
             '}',
-            '.xsact-part-tile-icon{font-size:18px;line-height:1;}',
-            '.xsact-part-tile-label{font-size:11px;white-space:nowrap;}',
-
+            '.xsact-body-part-zone{',
+            '  fill:transparent;stroke:rgb(var(--xs-accent-rgb) / 0.55);stroke-width:1.8;',
+            '  cursor:pointer;transition:fill .15s,stroke .15s,stroke-width .15s,filter .15s;',
+            '  pointer-events:all;',
+            '}',
+            '.xsact-body-part-zone:hover,.xsact-body-part-zone.hover{',
+            '  fill:rgb(var(--xs-accent-rgb) / 0.16);stroke:var(--xs-accent);stroke-width:2.6;',
+            '  filter:drop-shadow(0 0 6px rgb(var(--xs-accent-rgb) / 0.55));',
+            '}',
+            '.xsact-body-part-hint{',
+            '  font-size:12px;color:var(--xs-text-dim);text-align:center;',
+            '  padding:6px 10px;border-radius:6px;background:var(--xs-panel-bg-2);',
+            '  border:1px solid var(--xs-border);white-space:nowrap;',
+            '}',
             /* 预设栏 */
             '.xsact-qa-panel-body.fav-active .xsact-action-btn:hover{',
             '  border-style:dashed;border-color:rgba(232,179,57,0.7);',
