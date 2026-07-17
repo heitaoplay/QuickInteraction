@@ -14,3 +14,8 @@ dev/
 # 截图等二进制
 *.png
 *.jpg
+
+# 构建产物（由 build.mjs / Actions 生成，不入库）
+/assets/
+/_site/
+
