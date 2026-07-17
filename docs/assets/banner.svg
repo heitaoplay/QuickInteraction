@@ -40,7 +40,7 @@
   <!-- version pill -->
   <g>
     <rect x="66" y="312" width="118" height="34" rx="17" fill="#FF5C7A" fill-opacity="0.14" stroke="#FF5C7A" stroke-opacity="0.5"/>
-    <text x="86" y="335" font-size="16" font-weight="700" fill="#FF8FA3">v0.6.0</text>
+    <text x="86" y="335" font-size="16" font-weight="700" fill="#FF8FA3">v0.7.9</text>
     <text x="138" y="335" font-size="14" fill="#8B93A7">release</text>
   </g>
 
