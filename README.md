@@ -6,9 +6,6 @@
 
 [![Version](https://img.shields.io/badge/version-0.7.9-FF5C7A)](https://github.com/heitaoplay/QuickInteraction/commits)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![Install](https://img.shields.io/badge/Install-Tampermonkey-FF5C7A?logo=tampermonkey&logoColor=white)](https://raw.githubusercontent.com/heitaoplay/QuickInteraction/main/loader.user.js)
-
-点击上方 **Install** 按钮，Tampermonkey 会自动弹出安装提示。装好后刷新 BC 页面即可使用，**以后每次刷新都会自动更新到最新版**。
 
 ---
 
@@ -27,7 +24,10 @@
 ## 安装
 
 1. 浏览器安装 [Tampermonkey](https://www.tampermonkey.net/)
-2. 点击上方 **Install** 按钮，在弹出的安装提示里点「安装」
+2. 点击下方 **Install** 按钮，在弹出的安装提示里点「安装」
+
+   [![Install](https://img.shields.io/badge/Install-Tampermonkey-FF5C7A?logo=tampermonkey&logoColor=white)](https://raw.githubusercontent.com/heitaoplay/QuickInteraction/main/loader.user.js)
+
 3. 进入 BC 聊天室，刷新页面，右下角出现闪电开关即安装成功
 
 > ⚠️ 如果之前装过完整版 `quick-interaction.user.js`，建议先在油猴里删除，避免重复加载。
