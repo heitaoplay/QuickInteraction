@@ -2,7 +2,7 @@
 // @name         快捷互动 (QuickInteraction)
 // @name:zh      快捷互动
 // @namespace    https://github.com/heitaoplay/QuickInteraction
-// @version      0.7.13
+// @version      0.7.14
 // @description  Bondage Club - 统一动作操作台。一键进入动作模式，在聊天室场景内直接点人物部位选动作，绕过原生5步嵌套菜单。
 // @author       Tao MUSE
 // @homepageURL  https://github.com/heitaoplay/QuickInteraction
@@ -39,7 +39,7 @@
         console.log.apply(console, args);
     }
 
-    const VERSION = '0.7.13';
+    const VERSION = '0.7.14';
 
     // ── 存储键 ──
     const S_ENABLED = 'xsact_qa_enabled';
@@ -1518,10 +1518,12 @@
                 }
             }
             if (curShift > 0) {
-                // 最大偏移约一个网格宽度，避免推得太远（和 v0.7.9 的“自身一半/最少80”类似）
-                var maxShift = Math.max(cur.rect.width * 0.55, maxShiftBase);
+                // 关键修复：偏移幅度必须 ≥ 线框宽度 + 间距，才能把拥抱/重叠的两人“完整错开”。
+                // 之前用 width*0.55（约 70px）小于线框实际宽度（约 72~80px），推完仍重叠；
+                // v0.7.9 的 max(width*0.5, 80) 恰好够，这里改成 width+spacing 保证任何宽度都能彻底分离。
+                var maxShift = cur.rect.width + spacing;
                 curShift = Math.min(curShift, maxShift);
-                // 限制在屏幕右边界内
+                // 限制在屏幕右边界内（仅在确实会越界时收紧，不因此残留重叠）
                 var maxRight = screenW - 10;
                 var desiredRight = cur.rect.left + curShift + cur.rect.width;
                 if (desiredRight > maxRight) {
