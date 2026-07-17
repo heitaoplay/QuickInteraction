@@ -2,7 +2,7 @@
 // @name         快捷互动 (QuickInteraction)
 // @name:zh      快捷互动
 // @namespace    https://github.com/heitaoplay/QuickInteraction
-// @version      0.7.14
+// @version      0.7.15
 // @description  Bondage Club - 统一动作操作台。一键进入动作模式，在聊天室场景内直接点人物部位选动作，绕过原生5步嵌套菜单。
 // @author       Tao MUSE
 // @homepageURL  https://github.com/heitaoplay/QuickInteraction
@@ -39,7 +39,7 @@
         console.log.apply(console, args);
     }
 
-    const VERSION = '0.7.14';
+    const VERSION = '0.7.15';
 
     // ── 存储键 ──
     const S_ENABLED = 'xsact_qa_enabled';
@@ -1248,26 +1248,17 @@
                 });
             }
 
-            // 合并：横坐标跟真实绘制位置（追踪拥抱等位移动作），纵坐标固定用槽位稳定坐标，
-            // 避免拥抱时线框被带得上上下下，保持“高度不变”
+            // 身体线框使用固定槽位坐标（绝对位置），不跟随拥抱/位移动画的临时绘制位置。
+            // 这样即使角色拥抱时绘制位置重叠，线框仍保持左右错开、高度不变。
             ChatRoomCharacter.forEach(function(c) {
                 if (!c || c.MemberNumber == null || !memberMNs[c.MemberNumber]) return;
                 var loop = loopMap[c.MemberNumber];
                 var anchor = anchorMap[c.MemberNumber];
                 if (!loop && !anchor) return;
-                var useX = loop, useY = loop;
-                var anchorOk = anchor && anchor.y >= -60 && anchor.y <= 1060;
-                if (anchorOk) {
-                    // 横坐标：只要水平位移不离谱，就跟随真实绘制位置
-                    if (!loop || Math.abs(anchor.x - loop.x) <= 350) {
-                        useX = anchor;
-                    }
-                    // 纵坐标：始终优先稳定槽位，缺失才 fallback
-                    if (!loop) {
-                        useY = anchor;
-                    }
-                }
-                layout.push({ char: c, x: useX.x, y: useY.y, zoom: (useX === anchor ? anchor.zoom : (loop ? loop.zoom : 1)), src: (useX === anchor) ? 'anchor' : 'loop' });
+                // 优先固定槽位坐标（loop），缺失才回退到真实绘制坐标（anchor）
+                var useX = loop || anchor;
+                var useY = loop || anchor;
+                layout.push({ char: c, x: useX.x, y: useY.y, zoom: (loop ? loop.zoom : (anchor ? anchor.zoom : 1)), src: loop ? 'loop' : 'anchor' });
             });
         } catch (e) {
             console.warn('[XSAct-QA] getCharLayout 失败:', e);
