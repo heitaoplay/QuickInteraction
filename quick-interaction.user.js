@@ -2,7 +2,7 @@
 // @name         快捷互动 (QuickInteraction)
 // @name:zh      快捷互动
 // @namespace    https://github.com/heitaoplay/QuickInteraction
-// @version      0.7.8
+// @version      0.7.9
 // @description  Bondage Club - 统一动作操作台。一键进入动作模式，在聊天室场景内直接点人物部位选动作，绕过原生5步嵌套菜单。
 // @author       Tao MUSE
 // @homepageURL  https://github.com/heitaoplay/QuickInteraction
@@ -39,7 +39,7 @@
         console.log.apply(console, args);
     }
 
-    const VERSION = '0.7.8';
+    const VERSION = '0.7.9';
 
     // ── 存储键 ──
     const S_ENABLED = 'xsact_qa_enabled';
@@ -51,6 +51,7 @@
     const S_SIZE = 'xsact_qa_panel_size';
     const S_MODE = 'xsact_qa_panel_mode';
     const S_SELF = 'xsact_qa_self_mode';
+    const S_TOGGLE_POS = 'xsact_qa_toggle_pos';
 
     // ── 集中状态（单一数据源，消除散落全局变量）──
     const state = {
@@ -81,7 +82,8 @@
         cachedScaleX: 1,
         cachedScaleY: 1,
         refreshInterval: null,        // 线框刷新定时器
-        lastLayoutCount: 0            // 上次布局角色数
+        lastLayoutCount: 0,           // 上次布局角色数
+        toggleDragged: false          // 本次按下闪电按钮是否已拖动
     };
 
     // ════════════════════════════════════════════════════════════════════════
@@ -875,12 +877,94 @@
             '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h7l-1 8 10-12h-7z"/></svg>';
         state.toggleBtnEl.title = state.isActive ? '退出快速动作模式' : '开启快速动作模式';
         state.toggleBtnEl.addEventListener('click', function(e) {
+            if (state.toggleDragged) {
+                e.stopPropagation();
+                e.preventDefault();
+                state.toggleDragged = false;
+                return;
+            }
             e.stopPropagation();
             toggleActionMode();
             updateToggleBtnStyle();
         });
         document.body.appendChild(state.toggleBtnEl);
+        applyTogglePosition();
+        makeToggleDraggable();
         updateToggleBtnStyle();
+    }
+
+    /** 读取并应用保存的闪电按钮位置 */
+    function applyTogglePosition() {
+        var btn = state.toggleBtnEl;
+        if (!btn) return;
+        var pos = loadSetting(S_TOGGLE_POS, null);
+        if (pos && typeof pos.left === 'number' && typeof pos.top === 'number') {
+            btn.style.left = pos.left + 'px';
+            btn.style.top = pos.top + 'px';
+            btn.style.right = 'auto';
+            btn.style.bottom = 'auto';
+        }
+    }
+
+    /** 持久化闪电按钮位置 */
+    function persistTogglePosition() {
+        var btn = state.toggleBtnEl;
+        if (!btn) return;
+        var rect = btn.getBoundingClientRect();
+        persist(S_TOGGLE_POS, { left: Math.round(rect.left), top: Math.round(rect.top) });
+    }
+
+    /** 让闪电按钮可拖拽；短按仍是打开/关闭，拖动则不触发打开 */
+    function makeToggleDraggable() {
+        var btn = state.toggleBtnEl;
+        if (!btn) return;
+        var startX, startY, startLeft, startTop;
+        var DRAG_THRESHOLD = 5;
+
+        function onDown(e) {
+            var ev = e.touches ? e.touches[0] : e;
+            startX = ev.clientX;
+            startY = ev.clientY;
+            state.toggleDragged = false;
+            var rect = btn.getBoundingClientRect();
+            startLeft = rect.left;
+            startTop = rect.top;
+            document.addEventListener('mousemove', onMove);
+            document.addEventListener('mouseup', onUp);
+            document.addEventListener('touchmove', onMove, { passive: false });
+            document.addEventListener('touchend', onUp);
+        }
+
+        function onMove(e) {
+            var ev = e.touches ? e.touches[0] : e;
+            var dx = ev.clientX - startX;
+            var dy = ev.clientY - startY;
+            if (!state.toggleDragged && Math.sqrt(dx * dx + dy * dy) > DRAG_THRESHOLD) {
+                state.toggleDragged = true;
+            }
+            if (state.toggleDragged) {
+                e.preventDefault();
+                btn.style.left = Math.max(0, Math.min(window.innerWidth - btn.offsetWidth, startLeft + dx)) + 'px';
+                btn.style.top = Math.max(0, Math.min(window.innerHeight - btn.offsetHeight, startTop + dy)) + 'px';
+                btn.style.right = 'auto';
+                btn.style.bottom = 'auto';
+            }
+        }
+
+        function onUp(e) {
+            document.removeEventListener('mousemove', onMove);
+            document.removeEventListener('mouseup', onUp);
+            document.removeEventListener('touchmove', onMove);
+            document.removeEventListener('touchend', onUp);
+            if (state.toggleDragged) {
+                e.preventDefault();
+                e.stopPropagation();
+                persistTogglePosition();
+            }
+        }
+
+        btn.addEventListener('mousedown', onDown);
+        btn.addEventListener('touchstart', onDown, { passive: false });
     }
 
     /** 更新按钮外观状态 */
@@ -1218,9 +1302,10 @@
 
     function positionGrid(grid, entry) {
         var rect = getGridScreenRect(entry);
+        var shift = entry.overlapShift || 0;
         grid.style.width = rect.width + 'px';
         grid.style.height = rect.height + 'px';
-        grid.style.left = rect.left + 'px';
+        grid.style.left = (rect.left + shift) + 'px';
         grid.style.top = rect.top + 'px';
     }
 
@@ -1254,11 +1339,10 @@
 
     function positionNameOverlay(overlay, entry) {
         var rect = getGridScreenRect(entry);
+        var shift = entry.overlapShift || 0;
         var labelHeight = overlay.offsetHeight || 24;
-        // 对齐 BC 原版名字基线：
-        // 原版名字绘制在 Drawing.js:493，基线 = 角色头顶 + 980*Zoom - 1000*Zoom + NameOffset
-        // 即 角色头顶(rect.top) 上方约 20*Zoom + NameOffset 处。rect.height = 1000*Zoom*sy，
-        // 所以 20*Zoom*sy = rect.height/50。NameOffset 在人数>5 时为 -4。
+        // 对齐 BC 原版名字基线：原版名字绘制在角色头顶（rect.top）附近，
+        // 房间人数 > 5 时再上移 4px（Drawing.js 的 NameOffset）。
         // 把标签底部贴到这条基线，使我们的标签直接盖住原版名字。
         var roomBig = (typeof ChatRoomCharacter !== 'undefined' && ChatRoomCharacter.length > 5);
         var nameOffset = roomBig ? -4 : 0;
@@ -1268,7 +1352,7 @@
         if (top < 8) {
             top = rect.bottom + 6;
         }
-        overlay.style.left = rect.centerX + 'px';
+        overlay.style.left = (rect.centerX + shift) + 'px';
         overlay.style.top = top + 'px';
         overlay.style.transform = 'translateX(-50%)';
     }
@@ -1291,12 +1375,56 @@
     function refreshBodyGrids() {
         clearBodyGrids();
         var layout = getCharLayout();
+        var shifts = computeOverlapShifts(layout);
         layout.forEach(function(entry) {
             var isPlayer = entry.char.IsPlayer && entry.char.IsPlayer();
             if (isPlayer && !state.selfModeActive) return; // 未开启自己模式时跳过自己
+            entry.overlapShift = shifts.get(entry.char.MemberNumber) || 0;
             createBodyGrid(entry);
             createNameOverlay(entry);
         });
+    }
+
+    /** 当两个角色拥抱/位置重叠时，给被遮挡的网格加一个水平偏移，让线框不完全糊在一起。
+     *  按角色水平顺序，若后者与前者重叠面积超过较小网格的 25%，则向右推开直到留出间距。 */
+    function computeOverlapShifts(layout) {
+        var shifts = new Map();
+        if (!layout || layout.length < 2) return shifts;
+
+        var rects = layout.map(function(entry) {
+            return { entry: entry, rect: getGridScreenRect(entry), mn: entry.char.MemberNumber };
+        });
+        rects.sort(function(a, b) { return a.rect.left - b.rect.left; });
+
+        for (var i = 1; i < rects.length; i++) {
+            var cur = rects[i];
+            var curShift = 0;
+            for (var j = 0; j < i; j++) {
+                var prev = rects[j];
+                var prevShift = shifts.get(prev.mn) || 0;
+                if (rectsOverlap(prev.rect, cur.rect, 0.25)) {
+                    var desired = prev.rect.left + prevShift + prev.rect.width + 12; // 12px 间距
+                    var need = desired - cur.rect.left;
+                    if (need > curShift) curShift = need;
+                }
+            }
+            if (curShift > 0) {
+                // 限制最大偏移，避免推到屏幕外太远；最多推开半个网格宽度或 80px 取较大值
+                var maxShift = Math.max(cur.rect.width * 0.5, 80);
+                curShift = Math.min(curShift, maxShift);
+                shifts.set(cur.mn, curShift);
+            }
+        }
+        return shifts;
+    }
+
+    function rectsOverlap(a, b, threshold) {
+        var xOverlap = Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left));
+        var yOverlap = Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top));
+        var aArea = a.width * a.height;
+        var bArea = b.width * b.height;
+        if (aArea <= 0 || bArea <= 0) return false;
+        return (xOverlap * yOverlap) / Math.min(aArea, bArea) > threshold;
     }
 
     /** 清除所有浮动网格与名字浮层 */
