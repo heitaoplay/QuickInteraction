@@ -2,7 +2,7 @@
 // @name         快捷互动 (QuickInteraction)
 // @name:zh      快捷互动
 // @namespace    https://github.com/heitaoplay/QuickInteraction
-// @version      0.7.11
+// @version      0.7.12
 // @description  Bondage Club - 统一动作操作台。一键进入动作模式，在聊天室场景内直接点人物部位选动作，绕过原生5步嵌套菜单。
 // @author       Tao MUSE
 // @homepageURL  https://github.com/heitaoplay/QuickInteraction
@@ -39,7 +39,7 @@
         console.log.apply(console, args);
     }
 
-    const VERSION = '0.7.11';
+    const VERSION = '0.7.12';
 
     // ── 存储键 ──
     const S_ENABLED = 'xsact_qa_enabled';
@@ -1248,11 +1248,21 @@
                 });
             }
 
-            // 合并：真实坐标优先
+            // 合并：优先用稳定槽位坐标（loopMap），anchor 只在合理范围内才覆盖
             ChatRoomCharacter.forEach(function(c) {
                 if (!c || c.MemberNumber == null || !memberMNs[c.MemberNumber]) return;
-                var pos = anchorMap[c.MemberNumber] || loopMap[c.MemberNumber];
-                if (pos) layout.push({ char: c, x: pos.x, y: pos.y, zoom: pos.zoom, src: anchorMap[c.MemberNumber] ? 'anchor' : 'loop' });
+                var loop = loopMap[c.MemberNumber];
+                var anchor = anchorMap[c.MemberNumber];
+                var pos = loop || anchor;
+                var anchorOk = anchor && anchor.y >= -60 && anchor.y <= 1060;
+                if (anchorOk && loop &&
+                    Math.abs(anchor.x - loop.x) <= 350 &&
+                    Math.abs(anchor.y - loop.y) <= 350) {
+                    pos = anchor;
+                } else if (anchorOk && !loop) {
+                    pos = anchor;
+                }
+                if (pos) layout.push({ char: c, x: pos.x, y: pos.y, zoom: pos.zoom, src: (pos === anchor) ? 'anchor' : 'loop' });
             });
         } catch (e) {
             console.warn('[XSAct-QA] getCharLayout 失败:', e);
@@ -1474,35 +1484,40 @@
         });
     }
 
-    /** 当两个角色拥抱/位置重叠时，给被遮挡的网格加一个水平偏移，让线框不完全糊在一起。
-     *  按角色水平顺序，若后者与前者重叠面积超过较小网格的 25%，则向右推开直到留出间距。
-     *  不再限制最大偏移量，确保拥抱这种几乎完全重叠的情况也能明显分开；
-     *  但会把偏移限制在屏幕右边界内，避免推出可视区域。 */
+    /** 当两个角色拥抱/位置严重重叠时，给被遮挡的网格加一个极小幅水平偏移，避免线框完全糊在一起。
+     *  规则：只在同一排、重叠面积超过 55% 时才推开；最大偏移 45px；不改变自己位置；不推出屏幕。 */
     function computeOverlapShifts(layout) {
         var shifts = new Map();
         if (!layout || layout.length < 2) return shifts;
 
         var rects = layout.map(function(entry) {
-            return { entry: entry, rect: getGridScreenRect(entry), mn: entry.char.MemberNumber };
+            return { entry: entry, rect: getGridScreenRect(entry), mn: entry.char.MemberNumber, isPlayer: entry.char.IsPlayer && entry.char.IsPlayer() };
         });
         rects.sort(function(a, b) { return a.rect.left - b.rect.left; });
         var screenW = window.innerWidth || 1920;
+        var maxShiftPx = 45; // 严控最大偏移，拒绝"推出去半个屏幕"
+        var sameRowThreshold = 0.45; // top 差值不超过线框高度的 45% 视为同一排
 
         for (var i = 1; i < rects.length; i++) {
             var cur = rects[i];
+            if (cur.isPlayer) continue; // 玩家自己的线框保持原位
             var curShift = 0;
             for (var j = 0; j < i; j++) {
                 var prev = rects[j];
                 var prevShift = shifts.get(prev.mn) || 0;
-                if (rectsOverlap(prev.rect, cur.rect, 0.25)) {
-                    var desired = prev.rect.left + prevShift + prev.rect.width + 24; // 24px 间距
+                // 只处理同一排角色，避免上下排被误判为重叠
+                if (Math.abs(prev.rect.top - cur.rect.top) > cur.rect.height * sameRowThreshold) continue;
+                // 只有真正大面积重叠才偏移（拥抱/贴贴）
+                if (rectsOverlap(prev.rect, cur.rect, 0.55)) {
+                    var desired = prev.rect.left + prevShift + prev.rect.width + 18; // 18px 间距
                     var need = desired - cur.rect.left;
                     if (need > curShift) curShift = need;
                 }
             }
             if (curShift > 0) {
-                // 限制在屏幕右边界内，避免推出可视区域
-                var maxRight = screenW - 24;
+                curShift = Math.min(curShift, maxShiftPx);
+                // 限制在屏幕右边界内
+                var maxRight = screenW - 12;
                 var desiredRight = cur.rect.left + curShift + cur.rect.width;
                 if (desiredRight > maxRight) {
                     curShift = Math.max(0, maxRight - cur.rect.left - cur.rect.width);
@@ -2574,7 +2589,9 @@
             refreshBodyGrids();
             return;
         }
+        var shifts = computeOverlapShifts(layout);
         layout.forEach(function(entry) {
+            entry.overlapShift = shifts.get(entry.char.MemberNumber) || 0;
             var grid = state.bodyGrids.get(entry.char);
             if (grid) positionGrid(grid, entry);
             if (state.showNames && !state.nameOverlays.has(entry.char)) createNameOverlay(entry);
