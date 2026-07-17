@@ -2,7 +2,7 @@
 // @name         快捷互动 (QuickInteraction)
 // @name:zh      快捷互动
 // @namespace    https://github.com/heitaoplay/QuickInteraction
-// @version      0.7.16
+// @version      0.7.9
 // @description  Bondage Club - 统一动作操作台。一键进入动作模式，在聊天室场景内直接点人物部位选动作，绕过原生5步嵌套菜单。
 // @author       Tao MUSE
 // @homepageURL  https://github.com/heitaoplay/QuickInteraction
@@ -39,7 +39,7 @@
         console.log.apply(console, args);
     }
 
-    const VERSION = '0.7.16';
+    const VERSION = '0.7.9';
 
     // ── 存储键 ──
     const S_ENABLED = 'xsact_qa_enabled';
@@ -51,7 +51,6 @@
     const S_SIZE = 'xsact_qa_panel_size';
     const S_MODE = 'xsact_qa_panel_mode';
     const S_SELF = 'xsact_qa_self_mode';
-    const S_SHOW_NAMES = 'xsact_qa_show_names';
     const S_TOGGLE_POS = 'xsact_qa_toggle_pos';
 
     // ── 集中状态（单一数据源，消除散落全局变量）──
@@ -64,7 +63,6 @@
         selectedAction: null,         // 当前选中动作名
         selectedActionItem: null,     // 当前选中动作绑定的道具
         panelMode: 'part',            // 'part'=单部位 | 'combo'=自定义组合
-        showNames: false,             // 是否显示角色名字浮层
         allModeActive: false,         // 全员范围开关
         favModeActive: false,         // 收藏模式开关
         selfModeActive: false,        // 自己模式开关
@@ -545,55 +543,6 @@
         return packet;
     }
 
-    /** 判断动作名是否为第三方自定义动作（非 BC 原生、非 ECHO 纯中文）。
-     *  这类动作依赖发送方本地 Label，对方没装对应插件时会显示 MISSING。 */
-    function looksLikeCustomAction(name) {
-        if (!name || typeof name !== 'string') return false;
-        // 含下划线或随机 ID 后缀（如 Luzi_uc09b0）
-        if (/[_]/.test(name)) return true;
-        if (/\w\d{3,}/.test(name)) return true;
-        var hasCJK = /[\u4e00-\u9fa5]/.test(name);
-        var hasLatin = /[a-zA-Z]/.test(name);
-        // 中文与英文混合（ECHO 动作是纯中文，BC 原生是纯英文）
-        if (hasCJK && hasLatin) return true;
-        return false;
-    }
-
-    /** 将 Activity 模板渲染为纯文本，去掉 SourceCharacter 避免 Emote 重复发送者名字。 */
-    function renderActivityTemplate(template, actor, target) {
-        if (!template) return '';
-        var text = template
-            .replace(/\bSourceCharacter\b/g, '')
-            .replace(/\bTargetCharacterPossessive\b/g, (target && target.Name || '') + '的')
-            .replace(/\bTargetCharacter\b/g, target && target.Name || '')
-            .replace(/\bActivityAsset\b/g, '')
-            .replace(/\s+/g, ' ')
-            .trim();
-        return text;
-    }
-
-    /** 构造 Emote 包，用于发送方有 Label 但接收方可能没有 Label 的自定义动作。
-     *  这样对方看到的是动作文本，而不是 MISSING ACTIVITY DESCRIPTION。 */
-    function makeEmotePacket(targetChar, group, name) {
-        if (!targetChar || !name || !group) return null;
-        if (typeof ActivityDictionaryText !== 'function') return null;
-        var isSelf = Player && targetChar.MemberNumber === Player.MemberNumber;
-        var prefix = isSelf ? 'ChatSelf' : 'ChatOther';
-        var template = ActivityDictionaryText('Label-' + prefix + '-' + group + '-' + name);
-        if (!template || template.indexOf('MISSING') !== -1) {
-            // 自我动作回退到 ChatOther
-            if (isSelf) template = ActivityDictionaryText('Label-ChatOther-' + group + '-' + name);
-        }
-        if (!template || template.indexOf('MISSING') !== -1) return null;
-        var rendered = renderActivityTemplate(template, Player, targetChar);
-        if (!rendered) return null;
-        return {
-            Content: rendered,
-            Type: 'Emote',
-            Dictionary: [{ SourceCharacter: Player.MemberNumber }]
-        };
-    }
-
     /** 记录上次动作（抽取公共代码） */
     function recordLastAction(name, targetMN, part, dict) {
         state.lastAction = { name: name, targetMN: targetMN, dict: dict, part: part, time: Date.now() };
@@ -638,23 +587,6 @@
         var name = String(activityName || '');
         var group = String(groupOverride || state.selectedPart || '');
         if (!name || !group) return false;
-
-        // 第三方自定义动作：发送方有 Label，但对方未装插件时显示 MISSING。
-        // 降级为 Emote 发送纯文本，确保对方也能看到动作描述。
-        if (looksLikeCustomAction(name)) {
-            try {
-                var emotePacket = makeEmotePacket(charObj, group, name);
-                if (emotePacket) {
-                    ServerSend('ChatRoomChat', emotePacket);
-                    recordLastAction(name, charObj.MemberNumber, group, emotePacket.Dictionary);
-                    return true;
-                }
-            } catch (emoteErr) {
-                console.warn('[XSAct-QA] 自定义动作 Emote 发送失败:', emoteErr.message);
-            }
-            // 如果本地也没有 Label，继续走 Activity 流程，让 BC 提示不可用
-        }
-
         try {
             var packet = makeActivityPacket(charObj, group, name, activityItem);
             if (!packet) { toast('该动作需要特定道具', '#FF5C5C'); return false; }
@@ -898,21 +830,6 @@
         if (btn) btn.classList.toggle('on', state.selfModeActive);
     }
 
-    /** 切换「名字显示」开关：开启后在角色上方显示名字浮层 */
-    function toggleShowNames() {
-        state.showNames = !state.showNames;
-        persist(S_SHOW_NAMES, state.showNames);
-        updateShowNamesButtonVisual();
-        if (state.isActive) refreshBodyGrids();
-        toast(state.showNames ? '名字显示：开启' : '名字显示：关闭',
-              state.showNames ? '#46E0A0' : '#888');
-    }
-    function updateShowNamesButtonVisual() {
-        if (!state.actionPanelEl) return;
-        var btn = state.actionPanelEl.querySelector('#xsact-names-btn');
-        if (btn) btn.classList.toggle('on', state.showNames);
-    }
-
     /** 清空全部收藏动作 */
     function clearAllFavorites() {
         if (!Array.isArray(state.favorites) || state.favorites.length === 0) { toast('当前没有收藏动作', '#888'); return; }
@@ -1129,7 +1046,7 @@
         }
         // 恢复上次使用的模式（首次无记录则默认「单部位」）
         var savedMode = loadSetting(S_MODE, 'part');
-        if (!/^(part|combo)$/.test(savedMode)) savedMode = 'part';
+        if (savedMode !== 'part' && savedMode !== 'combo') savedMode = 'part';
         state.panelMode = savedMode;
         state.actionPanelEl.querySelectorAll('.xsact-mode-tab').forEach(function(tab) {
             tab.classList.toggle('active', tab.dataset.mode === state.panelMode);
@@ -1142,10 +1059,6 @@
         // 恢复自己模式开关状态
         try { state.selfModeActive = loadSetting(S_SELF, false); } catch (_) {}
         updateSelfButtonVisual();
-
-        // 恢复名字显示开关状态（新装默认关闭）
-        try { state.showNames = loadSetting(S_SHOW_NAMES, false); } catch (_) {}
-        updateShowNamesButtonVisual();
 
         // 为每个角色创建身体部位浮动网格
         refreshBodyGrids();
@@ -1197,7 +1110,6 @@
   </div>\
   <div class="xsact-qa-panel-footer">\
     <button class="xsact-qa-mini-btn xsact-toggle-pill" id="xsact-self-btn" title="切换自己模式：开启后可选中并对自己执行动作">' + svgIcon('user', 14) + '<span>自己</span><span class="xsact-pill-dot"></span></button>\
-    <button class="xsact-qa-mini-btn xsact-toggle-pill" id="xsact-names-btn" title="切换名字显示：开启后在角色上方显示名字浮层">' + svgIcon('tag', 14) + '<span>名字</span><span class="xsact-pill-dot"></span></button>\
     <button class="xsact-qa-mini-btn xsact-toggle-pill" id="xsact-all-btn" title="切换全员范围：开启后，动作将对房间内所有人执行">' + svgIcon('users', 14) + '<span>全员</span><span class="xsact-pill-dot"></span></button>\
     <button class="xsact-qa-mini-btn xsact-toggle-pill" id="xsact-fav-btn" title="收藏模式：开启后点击动作会加入/取消收藏">' + svgIcon('star', 14) + '<span>收藏</span><span class="xsact-pill-dot"></span></button>\
     <button class="xsact-qa-mini-btn" id="xsact-fav-clear-btn" title="清空全部收藏动作">' + svgIcon('trash', 14) + '</button>\
@@ -1248,17 +1160,11 @@
                 });
             }
 
-            // 身体线框使用固定槽位坐标（绝对位置），不跟随拥抱/位移动画的临时绘制位置。
-            // 这样即使角色拥抱时绘制位置重叠，线框仍保持左右错开、高度不变。
+            // 合并：真实坐标优先
             ChatRoomCharacter.forEach(function(c) {
                 if (!c || c.MemberNumber == null || !memberMNs[c.MemberNumber]) return;
-                var loop = loopMap[c.MemberNumber];
-                var anchor = anchorMap[c.MemberNumber];
-                if (!loop && !anchor) return;
-                // 优先固定槽位坐标（loop），缺失才回退到真实绘制坐标（anchor）
-                var useX = loop || anchor;
-                var useY = loop || anchor;
-                layout.push({ char: c, x: useX.x, y: useY.y, zoom: (loop ? loop.zoom : (anchor ? anchor.zoom : 1)), src: loop ? 'loop' : 'anchor' });
+                var pos = anchorMap[c.MemberNumber] || loopMap[c.MemberNumber];
+                if (pos) layout.push({ char: c, x: pos.x, y: pos.y, zoom: pos.zoom, src: anchorMap[c.MemberNumber] ? 'anchor' : 'loop' });
             });
         } catch (e) {
             console.warn('[XSAct-QA] getCharLayout 失败:', e);
@@ -1425,7 +1331,6 @@
         overlay.className = 'xsact-name-overlay' + (charObj.IsPlayer && charObj.IsPlayer() ? ' self' : '');
         overlay.textContent = characterDisplayName(charObj);
         overlay.dataset.mn = charObj.MemberNumber;
-        overlay.style.display = state.showNames ? '' : 'none';
         layer.appendChild(overlay);
         state.nameOverlays.set(charObj, overlay);
         positionNameOverlay(overlay, entry);
@@ -1476,13 +1381,12 @@
             if (isPlayer && !state.selfModeActive) return; // 未开启自己模式时跳过自己
             entry.overlapShift = shifts.get(entry.char.MemberNumber) || 0;
             createBodyGrid(entry);
-            if (state.showNames) createNameOverlay(entry);
+            createNameOverlay(entry);
         });
     }
 
-    /** 当两个角色拥抱/位置严重重叠时，给被遮挡的网格加一个水平偏移，避免线框完全糊在一起。
-     *  规则：只处理真正大面积重叠（>50%），忽略正常并肩站位；最大偏移约一个角色宽度，
-     *  确保拥抱者能完整错开；每帧重算，玩家自己也参与避让。 */
+    /** 当两个角色拥抱/位置重叠时，给被遮挡的网格加一个水平偏移，让线框不完全糊在一起。
+     *  按角色水平顺序，若后者与前者重叠面积超过较小网格的 25%，则向右推开直到留出间距。 */
     function computeOverlapShifts(layout) {
         var shifts = new Map();
         if (!layout || layout.length < 2) return shifts;
@@ -1491,10 +1395,6 @@
             return { entry: entry, rect: getGridScreenRect(entry), mn: entry.char.MemberNumber };
         });
         rects.sort(function(a, b) { return a.rect.left - b.rect.left; });
-        var screenW = window.innerWidth || 1920;
-        var maxShiftBase = 70;      // 最小偏移幅度
-        var overlapThreshold = 0.5; // 只有>50%面积重叠才推（拥抱级）
-        var spacing = 16;           // 推开后留出的间距
 
         for (var i = 1; i < rects.length; i++) {
             var cur = rects[i];
@@ -1502,25 +1402,17 @@
             for (var j = 0; j < i; j++) {
                 var prev = rects[j];
                 var prevShift = shifts.get(prev.mn) || 0;
-                if (rectsOverlap(prev.rect, cur.rect, overlapThreshold)) {
-                    var desired = prev.rect.left + prevShift + prev.rect.width + spacing;
+                if (rectsOverlap(prev.rect, cur.rect, 0.25)) {
+                    var desired = prev.rect.left + prevShift + prev.rect.width + 12; // 12px 间距
                     var need = desired - cur.rect.left;
                     if (need > curShift) curShift = need;
                 }
             }
             if (curShift > 0) {
-                // 关键修复：偏移幅度必须 ≥ 线框宽度 + 间距，才能把拥抱/重叠的两人“完整错开”。
-                // 之前用 width*0.55（约 70px）小于线框实际宽度（约 72~80px），推完仍重叠；
-                // v0.7.9 的 max(width*0.5, 80) 恰好够，这里改成 width+spacing 保证任何宽度都能彻底分离。
-                var maxShift = cur.rect.width + spacing;
+                // 限制最大偏移，避免推到屏幕外太远；最多推开半个网格宽度或 80px 取较大值
+                var maxShift = Math.max(cur.rect.width * 0.5, 80);
                 curShift = Math.min(curShift, maxShift);
-                // 限制在屏幕右边界内（仅在确实会越界时收紧，不因此残留重叠）
-                var maxRight = screenW - 10;
-                var desiredRight = cur.rect.left + curShift + cur.rect.width;
-                if (desiredRight > maxRight) {
-                    curShift = Math.max(0, maxRight - cur.rect.left - cur.rect.width);
-                }
-                if (curShift > 0) shifts.set(cur.mn, curShift);
+                shifts.set(cur.mn, curShift);
             }
         }
         return shifts;
@@ -1589,7 +1481,7 @@
 
     /** 切换面板模式（部位 / 自定义组合） */
     function setPanelMode(mode) {
-        if (!/^(part|combo)$/.test(mode)) return;
+        if (mode !== 'part' && mode !== 'combo') return;
         state.panelMode = mode;
         persist(S_MODE, mode);
         if (state.actionPanelEl) {
@@ -1785,8 +1677,6 @@
             resize:   '<path d="M22 2L2 22M16 22h6v-6"/>',
             users:    '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
             target:   '<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/>',
-            tag:      '<path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><circle cx="7" cy="7" r="1.5"/>',
-            zap:      '<polygon points="13 2 4 14 11 14 10 22 20 10 13 10"/>',
             layers:   '<path d="M12 3L2 9l10 6 10-6-10-6z"/><path d="M2 15l10 6 10-6"/>',
             user:     '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
             settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
@@ -2008,10 +1898,6 @@
         // 自己模式按钮
         var selfBtn = panel.querySelector('#xsact-self-btn');
         if (selfBtn) selfBtn.addEventListener('click', toggleSelfMode);
-
-        // 名字显示按钮
-        var namesBtn = panel.querySelector('#xsact-names-btn');
-        if (namesBtn) namesBtn.addEventListener('click', toggleShowNames);
 
         // ×3 连打
         var x3Btn = panel.querySelector('#xsact-x3-btn');
@@ -2284,7 +2170,6 @@
             '.xsact-combo-run:hover{background:rgb(var(--xs-accent-rgb) / 0.18);border-color:var(--xs-accent);color:var(--xs-accent-text);}',
             '.xsact-combo-edit:hover{background:rgba(70,224,160,0.16);border-color:#46E0A0;color:#CFFAE8;}',
             '.xsact-combo-delete:hover{background:rgba(255,92,92,0.16);border-color:#FF5C5C;color:#FFB3B3;}',
-
             '.xsact-combo-new-btn{',
             '  grid-column:1 / -1;',
             '  width:100%;padding:10px;margin-top:7px;',
@@ -2542,13 +2427,17 @@
         // 定时刷新：检测新进入房间的角色（每 3 秒）
         function startRefreshTimer() {
             stopRefreshTimer();
-            // 仅做兜底刷新：每帧 ChatRoomMenuDraw 已调用 updateGridPositions（其内部用
-            // state.lastLayoutCount 正确判断人数变化并重建）。这里不能再用自己的
-            // bodyGrids.size 与 layout.length 比较来触发 refreshBodyGrids，否则 selfMode
-            // 关闭时玩家网格不计入 bodyGrids.size，导致 6 !== 7 永远成立，每 3 秒强制重建
-            // 一次、线框瞬间跳动。
             state.refreshInterval = setInterval(function() {
-                if (state.isActive) updateGridPositions();
+                if (state.isActive) {
+                    var currentCount = state.bodyGrids.size;
+                    var layout = getCharLayout();
+                    if (layout.length !== currentCount) {
+                        logD('检测到角色数量变化:', currentCount, '→', layout.length);
+                        refreshBodyGrids();
+                    } else {
+                        updateGridPositions();
+                    }
+                }
             }, 3000);
         }
         function stopRefreshTimer() {
@@ -2583,12 +2472,9 @@
             refreshBodyGrids();
             return;
         }
-        var shifts = computeOverlapShifts(layout);
         layout.forEach(function(entry) {
-            entry.overlapShift = shifts.get(entry.char.MemberNumber) || 0;
             var grid = state.bodyGrids.get(entry.char);
             if (grid) positionGrid(grid, entry);
-            if (state.showNames && !state.nameOverlays.has(entry.char)) createNameOverlay(entry);
             var overlay = state.nameOverlays.get(entry.char);
             if (overlay) positionNameOverlay(overlay, entry);
         });
@@ -2667,7 +2553,6 @@
         try { state.presets = loadSetting(S_PRESETS, []); } catch (_) {}
         try { state.lastAction = loadStorage(S_LAST, null); } catch (_) {}
         try { state.combos = loadSetting(S_COMBOS, []); } catch (_) {}
-        try { state.showNames = loadSetting(S_SHOW_NAMES, false); } catch (_) {}
 
         // 恢复主题设置（优先读游戏账号，回退本地）
         try { state.theme = loadSetting(S_THEME, 'dark'); } catch (_) {}
