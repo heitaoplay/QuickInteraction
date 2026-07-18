@@ -95,7 +95,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         selfModeActive: false,        // 自己模式开关
         combos: [],                   // 自定义组合
         editingComboId: null,         // 正在编辑的组合 id
-        favorites: [],                // 收藏动作名
+        favorites: [],                // 收藏复合键数组：格式 "部位Group|动作名"（如 "ItemMouth|Caress"）
         presets: [],                  // 预留预设
         lastAction: null,             // 上次执行的动作
         toggleBtnDrawn: false,        // 浮动开关是否已绘制
@@ -283,6 +283,38 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             console.error('[XSAct-QA] 读取设置失败 ' + key + ':', e);
             return fallback;
         }
+    }
+
+    /** 收藏数据迁移：旧版 favorites 为纯动作名数组（不区分部位），升级为「部位Group|动作名」复合键。
+     *  迁移策略：将遗留裸名展开到玩家当前所有包含该动作的部位，一次性持久化，避免静默丢失收藏。 */
+    function migrateFavorites() {
+        if (!Array.isArray(state.favorites)) { state.favorites = []; return; }
+        var needMigrate = state.favorites.some(function(f) {
+            return typeof f === 'string' && f.indexOf('|') === -1;
+        });
+        if (!needMigrate) return;
+        var groups = BODY_PARTS.map(function(p) { return p.group; });
+        var out = [];
+        state.favorites.forEach(function(f) {
+            if (typeof f !== 'string') return;
+            if (f.indexOf('|') !== -1) { out.push(f); return; } // 已是新格式
+            var name = f;
+            var expanded = false;
+            if (typeof ActivityAllowedForGroup === 'function' && Player) {
+                groups.forEach(function(g) {
+                    try {
+                        var acts = ActivityAllowedForGroup(Player, g);
+                        if (acts.some(function(a) { return a.Activity && a.Activity.Name === name; })) {
+                            out.push(g + '|' + name);
+                            expanded = true;
+                        }
+                    } catch (_) { /* 忽略单个部位枚举失败 */ }
+                });
+            }
+            if (!expanded) out.push(name); // 兜底：无法展开则保留裸名
+        });
+        state.favorites = out;
+        persist(S_FAVS, state.favorites);
     }
 
     // ── 主题应用 ──
@@ -846,20 +878,22 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         var ico = btn.querySelector('.xsact-ico');
         if (ico) ico.outerHTML = svgIcon(state.favModeActive ? 'starFill' : 'star', 14);
     }
-    function toggleFavoriteAction(name, btn) {
-        var idx = state.favorites.indexOf(name);
+    function toggleFavoriteAction(partGroup, name, btn) {
+        var key = partGroup + '|' + name;
+        var idx = state.favorites.indexOf(key);
         if (idx === -1) {
-            state.favorites.push(name);
-            toast('已收藏：' + getActivityLabel(name, state.selectedPart || ''), '#E8B339');
+            state.favorites.push(key);
+            toast('已收藏：' + getActivityLabel(name, partGroup), '#E8B339');
         } else {
             state.favorites.splice(idx, 1);
             toast('取消收藏', '#888');
         }
         persist(S_FAVS, state.favorites);
-        if (btn && state.selectedPart) {
-            btn.classList.toggle('fav', idx === -1);
+        if (btn) {
+            var added = idx === -1;
+            btn.classList.toggle('fav', added);
             var star = btn.querySelector('.xsact-action-star');
-            if (idx === -1) {
+            if (added) {
                 if (!star) {
                     star = document.createElement('span');
                     star.className = 'xsact-action-star';
@@ -1956,7 +1990,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         var isEditing = !!state.editingComboId;
         actions.forEach(function(act) {
             var lbl = getActivityLabel(act.Name, partGroup);
-            var isFav = state.favorites.indexOf(act.Name) !== -1;
+            var isFav = state.favorites.indexOf(partGroup + '|' + act.Name) !== -1;
             html += '<div class="xsact-action-row' + (isEditing ? ' editing' : '') + '" data-name="' + act.Name + '">' +
                 '<button class="xsact-action-btn' + (isFav ? ' fav' : '') + '" data-name="' + act.Name + '" title="' + act.Name + '">' +
                 '<span class="xsact-action-label">' + lbl + '</span>' +
@@ -1980,7 +2014,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                 btn.classList.add('sel');
 
                 if (state.favModeActive) {
-                    toggleFavoriteAction(actName, btn);
+                    toggleFavoriteAction(partGroup, actName, btn);
                     return;
                 }
 
@@ -3207,6 +3241,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         state.isActive = loadSetting(S_ENABLED, false);
         state.selfModeActive = loadSetting(S_SELF, false);
         state.favorites = loadSetting(S_FAVS, []);
+        migrateFavorites(); // 旧版纯动作名 → 部位复合键（一次性迁移）
         state.presets = loadSetting(S_PRESETS, []);
         state.lastAction = loadStorage(S_LAST, null);
         state.combos = loadSetting(S_COMBOS, []);
@@ -3264,6 +3299,8 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             toggleFavMode: toggleFavMode,
             toggleSelfMode: toggleSelfMode,
             clearAllFavorites: clearAllFavorites,
+            get favorites() { return state.favorites.slice(); },
+            favKey: function(partGroup, name) { return partGroup + '|' + name; },
             // ── 主题切换 ──
             toggleTheme: toggleTheme,
             setTheme: function(id) { applyTheme(id); persist(S_THEME, id); return state.theme; },
