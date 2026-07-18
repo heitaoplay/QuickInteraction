@@ -2,7 +2,7 @@
 // @name         快捷互动 (QuickInteraction)
 // @name:zh      快捷互动
 // @namespace    https://github.com/heitaoplay/QuickInteraction
-// @version      1.0.0
+// @version      1.0.2
 // @description  Bondage Club - 统一动作操作台。一键进入动作模式，在聊天室场景内直接点人物部位选动作，绕过原生5步嵌套菜单。
 // @author       Tao MUSE
 // @homepageURL  https://github.com/heitaoplay/QuickInteraction
@@ -62,7 +62,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         if (!_serverSyncWarned) { _serverSyncWarned = true; toast('设置同步到服务器失败，已保留在本地', '#FF5C5C'); }
     }
 
-    const VERSION = '1.0.1';
+    const VERSION = '1.0.2';
 
     // ── 存储键 ──
     const S_ENABLED = 'xsact_qa_enabled';
@@ -702,6 +702,18 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             var focusGroupObj = null;
             if (typeof AssetGroup !== 'undefined' && Array.isArray(AssetGroup)) {
                 focusGroupObj = AssetGroup.find(function(g) { return g && g.Name === group; });
+            }
+            // ── echo 自定义动作跨客户端兜底（对齐 BC 原生 ActivityRun）──
+            // echo-activity-ext 用 @sugarch/bc-activity-manager 注册动作；该库在 ActivityRun
+            // 调用栈内发消息时，会往 Dictionary 注入 "MISSING ACTIVITY DESCRIPTION FOR KEYWORD <Content>"
+            // 文本，使未装插件/无该动作定义的客户端也能看到正确句子。XSAct 走 ActivityRun(...,false)
+            // + 自发包（不在 ActivityRun 栈内），故此处补上；仅对 echo 动作（笨蛋笨Luzi_ 前缀）生效，
+            // 不影响 XSAct_ / 内置 / 第三方动作等其它模块。中文对话以 UTF-8 JSON 直传，无编码转换。
+            if (name && name.indexOf('笨蛋笨Luzi_') === 0 && typeof ActivityDictionaryText === 'function') {
+                var _echoDlg = ActivityDictionaryText(packet.Content);
+                if (_echoDlg && _echoDlg.indexOf('MISSING') === -1 && _echoDlg.indexOf('[STRING_RETRIEVAL_FAILED]') === -1) {
+                    packet.Dictionary.push({ Tag: 'MISSING ACTIVITY DESCRIPTION FOR KEYWORD ' + packet.Content, Text: _echoDlg });
+                }
             }
             try {
                 charObj.FocusGroup = focusGroupObj || { Name: group };

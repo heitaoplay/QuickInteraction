@@ -1,12 +1,19 @@
 {
-  "version": "1.0.1",
-  "date": "2026-07-18",
+  "version": "1.0.2",
+  "date": "2026-07-19",
   "severity": "normal",
   "summary": [
-    "v1.0.1：修复动作点击误关浮层，优化浅色主题与部位线框辨识度",
-    "修复：点击右侧动作或「加入组合」时左侧人物浮层不再误关闭",
-    "优化：浅色模式配色/对比度、部位线框深灰描边+玫红高亮、状态文字深色化",
-    "精简：自己模式开关提示文案"
+    "v1.0.2：修复 XSAct 触发 echo 自定义动作时对方的同步/乱码问题",
+    "修复：通过 XSAct 触发 echo-activity-ext 自定义动作，对方（未安装扩展）现在能看到正确的中文动作文本，不再显示原始活动键乱码",
+    "对齐：发送逻辑现已对齐 BC 原生 ActivityRun 的兜底文本注入机制",
+    "范围：仅影响 echo 自定义动作（笨蛋笨Luzi_ 前缀），XSAct_/内置/第三方动作不受影响"
   ],
-  "detailsUrl": "https://github.com/heitaoplay/QuickInteraction/releases"
+  "detailsUrl": "https://github.com/heitaoplay/QuickInteraction/releases",
+  "announcement": {
+    "id": "2026-07-19-echo-sync-fix",
+    "severity": "info",
+    "title": "echo 自定义动作同步修复",
+    "message": "已修复通过 XSAct 触发 echo-activity-ext 自定义动作时，对方界面显示乱码（原始活动键）的问题。\n\n现在无论对方是否安装 echo-activity-ext，都能正确看到动作文本，与 BC 原生触发行为一致。修复仅针对 echo 自定义动作，不影响其他功能。\n\n如未自动更新，请刷新页面或重新安装插件。",
+    "detailsUrl": "https://github.com/heitaoplay/QuickInteraction/releases"
+  }
 }
