@@ -47,6 +47,21 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         console.log.apply(console, args);
     }
 
+    // 错误处理辅助（收口空 catch 红线）
+    // 每帧 hook 异常节流上报，避免静默藏 bug；单会话每函数最多报 3 次
+    const _hookErrSeen = {};
+    function reportHookError(name, e) {
+        if (_hookErrSeen[name] >= 3) return;
+        _hookErrSeen[name] = (_hookErrSeen[name] || 0) + 1;
+        console.warn('[XSAct-QA] hook『' + name + '』异常（已忽略，最多报 3 次）:', e && e.message);
+    }
+    // 服务器设置同步失败：必须可见 + 至少一次 toast（数据静默丢失红线）
+    let _serverSyncWarned = false;
+    function warnServerSync(e) {
+        console.warn('[XSAct-QA] 服务器设置同步失败，已回退本地存储:', e);
+        if (!_serverSyncWarned) { _serverSyncWarned = true; toast('设置同步到服务器失败，已保留在本地', '#FF5C5C'); }
+    }
+
     const VERSION = '0.7.27';
 
     // ── 存储键 ──
@@ -59,8 +74,9 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
     const S_SIZE = 'xsact_qa_panel_size';
     const S_MODE = 'xsact_qa_panel_mode';
     const S_SELF = 'xsact_qa_self_mode';
-    const S_SHOW_NAMES = 'xsact_qa_show_names';
     const S_TOGGLE_POS = 'xsact_qa_toggle_pos';
+    const S_UPDATE_DISMISSED = 'xsact_qa_update_dismissed';
+    const S_LAST_ANNOUNCE = 'xsact_qa_last_announce';
 
     // ── 集中状态（单一数据源，消除散落全局变量）──
     const state = {
@@ -72,7 +88,6 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         selectedAction: null,         // 当前选中动作名
         selectedActionItem: null,     // 当前选中动作绑定的道具
         panelMode: 'part',            // 'part'=单部位 | 'combo'=自定义组合
-        showNames: false,             // 是否显示角色名字浮层
         charListOpen: false,          // 人物列表弹出层是否打开
         popoverView: 'chars',         // 人物浮层当前视图：'chars' 人物列表 | 'parts' 部位选择
         allModeActive: false,         // 全员范围开关
@@ -84,10 +99,11 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         presets: [],                  // 预留预设
         lastAction: null,             // 上次执行的动作
         toggleBtnDrawn: false,        // 浮动开关是否已绘制
+        pendingBanner: null,         // 面板未打开时暂存的公告/更新横幅
+        updateTimer: null,           // 更新检测轮询定时器
         // ── UI / 渲染缓存 ──
         actionPanelEl: null,          // 右侧面板 DOM
         bodyGrids: new Map(),         // Character -> 身体线框元素
-        nameOverlays: new Map(),      // Character -> 名字浮层元素
         toggleBtnEl: null,            // 浮动开关 DOM
         charAnchor: {},               // 角色真实绘制坐标 {MN:{x,y,zoom,t}}
         cachedRect: null,             // 画布屏幕矩形缓存
@@ -246,7 +262,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             if (typeof ServerAccountUpdate !== 'undefined' && ServerAccountUpdate && typeof ServerAccountUpdate.QueueData === 'function') {
                 ServerAccountUpdate.QueueData({ OnlineSettings: Player.OnlineSettings });
             }
-        } catch (_) {}
+        } catch (e) { warnServerSync(e); }
     }
     function loadFromServer(key, fallback) {
         var store = getServerStore();
@@ -798,7 +814,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
     }
 
     /** 切换「全部」范围开关，并更新按钮视觉 */
-    /* ===== 7. 模式切换（全员 / 收藏 / 自己 / 名字） ===== */
+    /* ===== 7. 模式切换（全员 / 收藏 / 自己） ===== */
     function toggleAllMode() {
         state.allModeActive = !state.allModeActive;
         updateAllButtonVisual();
@@ -873,21 +889,6 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         if (btn) btn.classList.toggle('on', state.selfModeActive);
     }
 
-    /** 切换「名字显示」开关：开启后在角色上方显示名字浮层 */
-    function toggleShowNames() {
-        state.showNames = !state.showNames;
-        persist(S_SHOW_NAMES, state.showNames);
-        updateShowNamesButtonVisual();
-        if (state.isActive) refreshBodyGrids();
-        toast(state.showNames ? '名字显示：开启' : '名字显示：关闭',
-              state.showNames ? '#46E0A0' : '#888');
-    }
-    function updateShowNamesButtonVisual() {
-        if (!state.actionPanelEl) return;
-        var btn = state.actionPanelEl.querySelector('#xsact-names-btn');
-        if (btn) btn.classList.toggle('on', state.showNames);
-    }
-
     /** 清空全部收藏动作 */
     function clearAllFavorites() {
         if (!Array.isArray(state.favorites) || state.favorites.length === 0) { toast('当前没有收藏动作', '#888'); return; }
@@ -907,7 +908,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                 window.Liko.__Sys_Toast__(msg, 2000, color);
                 return;
             }
-        } catch (_) {}
+        } catch (_) { /* 忽略：Liko toast 不可用时下方 DOM 兜底仍执行 */ }
         // fallback: 创建简单提示
         var el = document.getElementById('xsact-qa-toast');
         if (!el) {
@@ -1062,7 +1063,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         }
     }
     function startVisibilityGuard() {
-        if (window.__XSActQA_VisGuard) { try { clearInterval(window.__XSActQA_VisGuard); } catch (_) {} }
+        if (window.__XSActQA_VisGuard) { try { clearInterval(window.__XSActQA_VisGuard); } catch (_) { /* 忽略：清理旧定时器失败无影响 */ } }
         window.__XSActQA_VisGuard = setInterval(guardToggleVisibility, 500);
     }
 
@@ -1116,14 +1117,13 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         applyPanelSize();
         applyPanelPosition();
         renderPanel();
+        renderPendingBanner();
+        checkUpdate().catch(function() {});
 
         // 恢复自己模式开关状态
         state.selfModeActive = loadSetting(S_SELF, false);
         updateSelfButtonVisual();
 
-        // 恢复名字显示开关状态（新装默认关闭）
-        state.showNames = loadSetting(S_SHOW_NAMES, false);
-        updateShowNamesButtonVisual();
 
         // 为每个角色创建身体部位浮动网格，并同步渲染人物列表
         refreshBodyGrids();
@@ -1168,6 +1168,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
       <button class="xsact-qa-mini-btn" id="xsact-exit-panel-btn" title="退出快速动作模式 (Esc)">' + svgIcon('close', 15) + '</button>\
     </span>\
   </div>\
+  <div class="xsact-update-banner" id="xsact-update-banner" style="display:none;"></div>\
   <div class="xsact-qa-panel-content">\
     <div class="xsact-qa-panel-main">\
       <div class="xsact-qa-mode-tabs">\
@@ -1181,7 +1182,6 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
   </div>\
   <div class="xsact-qa-panel-footer">\
     <button class="xsact-qa-mini-btn xsact-toggle-pill" id="xsact-self-btn" title="切换自己模式：开启后可选中并对自己执行动作">' + svgIcon('user', 14) + '<span>自己</span><span class="xsact-pill-dot"></span></button>\
-    <button class="xsact-qa-mini-btn xsact-toggle-pill" id="xsact-names-btn" title="切换名字显示：开启后在角色上方显示名字浮层">' + svgIcon('tag', 14) + '<span>名字</span><span class="xsact-pill-dot"></span></button>\
     <button class="xsact-qa-mini-btn xsact-toggle-pill" id="xsact-all-btn" title="切换全员范围：开启后，动作将对房间内所有人执行">' + svgIcon('users', 14) + '<span>全员</span><span class="xsact-pill-dot"></span></button>\
     <button class="xsact-qa-mini-btn xsact-toggle-pill" id="xsact-fav-btn" title="收藏模式：开启后点击动作会加入/取消收藏">' + svgIcon('star', 14) + '<span>收藏</span><span class="xsact-pill-dot"></span></button>\
     <button class="xsact-qa-mini-btn" id="xsact-fav-clear-btn" title="清空全部收藏动作">' + svgIcon('trash', 14) + '</button>\
@@ -1210,7 +1210,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
      * 获取房间内"真实成员"的绘制布局（逻辑坐标）
      * 使用 ChatRoomCharacter（权威成员列表）交叉校验，避免 Drawlist 含离场/NPC 角色
      */
-    /* ===== 12. 画布身体网格（霓虹线框 / 名字浮层） ===== */
+    /* ===== 12. 画布身体网格（霓虹线框） ===== */
     function getCharLayout() {
         var layout = [];
         try {
@@ -1405,48 +1405,6 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         return charObj.Nickname || charObj.Name || '???';
     }
 
-    /** 创建角色名字浮层（放在独立视口层，避免被画布/窗口边缘裁切） */
-    function createNameOverlay(entry) {
-        var charObj = entry.char;
-        if (state.nameOverlays.has(charObj)) return state.nameOverlays.get(charObj);
-        var layer = document.getElementById('xsact-name-layer');
-        if (!layer) {
-            layer = document.createElement('div');
-            layer.id = 'xsact-name-layer';
-            layer.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:90002;';
-            document.body.appendChild(layer);
-        }
-        var overlay = document.createElement('div');
-        overlay.className = 'xsact-name-overlay' + (charObj.IsPlayer && charObj.IsPlayer() ? ' self' : '');
-        overlay.textContent = characterDisplayName(charObj);
-        overlay.dataset.mn = charObj.MemberNumber;
-        overlay.style.display = state.showNames ? '' : 'none';
-        layer.appendChild(overlay);
-        state.nameOverlays.set(charObj, overlay);
-        positionNameOverlay(overlay, entry);
-        return overlay;
-    }
-
-    function positionNameOverlay(overlay, entry) {
-        var rect = getGridScreenRect(entry);
-        var shift = entry.overlapShift || 0;
-        var labelHeight = overlay.offsetHeight || 24;
-        // 对齐 BC 原版名字基线：原版名字绘制在角色头顶（rect.top）附近，
-        // 房间人数 > 5 时再上移 4px（Drawing.js 的 NameOffset）。
-        // 把标签底部贴到这条基线，使我们的标签直接盖住原版名字。
-        var roomBig = (typeof ChatRoomCharacter !== 'undefined' && ChatRoomCharacter.length > 5);
-        var nameOffset = roomBig ? -4 : 0;
-        var nameBaseline = rect.top - Math.round(rect.height / 50) + nameOffset;
-        var top = nameBaseline - labelHeight;
-        // 若上方超出视口，则 fallback 到角色下方
-        if (top < 8) {
-            top = rect.bottom + 6;
-        }
-        overlay.style.left = (rect.centerX + shift) + 'px';
-        overlay.style.top = top + 'px';
-        overlay.style.transform = 'translateX(-50%)';
-    }
-
     /** 将指定网格提升到最前（解决人物重叠时的选择问题） */
     var _gridZTop = 89999;
     function bringGridToFront(grid) {
@@ -1461,7 +1419,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         });
     }
 
-    /** 更新所有角色的身体网格与名字浮层 */
+    /** 更新所有角色的身体网格 */
     function refreshBodyGrids() {
         clearBodyGrids();
         var layout = getCharLayout();
@@ -1471,7 +1429,6 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             if (isPlayer && !state.selfModeActive) return; // 未开启自己模式时跳过自己
             entry.overlapShift = shifts.get(entry.char.MemberNumber) || 0;
             createBodyGrid(entry);
-            if (state.showNames) createNameOverlay(entry);
         });
         renderCharList();
     }
@@ -1537,12 +1494,6 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             if (grid && grid.parentNode) grid.parentNode.removeChild(grid);
         });
         state.bodyGrids.clear();
-        state.nameOverlays.forEach(function(el) {
-            if (el && el.parentNode) el.parentNode.removeChild(el);
-        });
-        state.nameOverlays.clear();
-        var layer = document.getElementById('xsact-name-layer');
-        if (layer && layer.parentNode) layer.parentNode.removeChild(layer);
     }
 
     /** 选中目标和部位 */
@@ -2081,7 +2032,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         var saved = loadSetting(S_SIZE, null);
         if (saved && typeof saved.width === 'number' && typeof saved.height === 'number') {
             state.actionPanelEl.style.width = Math.max(220, Math.min(560, saved.width)) + 'px';
-            state.actionPanelEl.style.height = Math.max(300, Math.min(window.innerHeight - 60, saved.height)) + 'px';
+            state.actionPanelEl.style.height = Math.max(300, Math.min(Math.min(window.innerHeight - 60, 820), saved.height)) + 'px';
         }
     }
 
@@ -2102,7 +2053,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             var nw = ow + (e.clientX - sx);
             var nh = oh + (e.clientY - sy);
             nw = Math.max(220, Math.min(560, nw));
-            nh = Math.max(300, Math.min(window.innerHeight - 60, nh));
+            nh = Math.max(300, Math.min(Math.min(window.innerHeight - 60, 820), nh));
             panel.style.width = nw + 'px';
             panel.style.height = nh + 'px';
         }
@@ -2213,6 +2164,25 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                 closeCharPopover();
             }
         });
+        // 阻止 BC 页面全局 wheel 监听吞掉面板内滚动：wheel 事件在面板层停止冒泡，
+        // 让面板/浮层自身的 overflow 滚动正常生效（不 preventDefault，保留原生滚动）。
+        panel.addEventListener('wheel', function(e) { e.stopPropagation(); }, { passive: true });
+        var charPop = panel.querySelector('#xsact-char-popover');
+        if (charPop) charPop.addEventListener('wheel', function(e) { e.stopPropagation(); }, { passive: true });
+
+        // 右侧动作选择面板需要更积极的滚动保护：BC 页面全局可能在 capture 阶段
+        // preventDefault 滚动，因此直接拦截动作列表的 wheel 事件并手动滚动。
+        var actionList = panel.querySelector('#xsact-action-list');
+        if (actionList) {
+            function onActionListWheel(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                actionList.scrollTop += e.deltaY;
+            }
+            actionList.addEventListener('wheel', onActionListWheel, { passive: false });
+            // 触屏设备：阻止 document 层 touchmove 被 preventDefault，保留容器内自然滚动
+            actionList.addEventListener('touchmove', function(e) { e.stopPropagation(); }, { passive: true });
+        }
 
         // 全员执行按钮：切换全员范围开关
         var allBtn = panel.querySelector('#xsact-all-btn');
@@ -2222,9 +2192,6 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         var selfBtn = panel.querySelector('#xsact-self-btn');
         if (selfBtn) selfBtn.addEventListener('click', toggleSelfMode);
 
-        // 名字显示按钮
-        var namesBtn = panel.querySelector('#xsact-names-btn');
-        if (namesBtn) namesBtn.addEventListener('click', toggleShowNames);
 
         // ×3 连打
         var x3Btn = panel.querySelector('#xsact-x3-btn');
@@ -2299,10 +2266,10 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         // 必须让主题规则靠后、优先生效；属性缺失时才回退到这里。
         var blocks = [':root{' +
             '--xs-accent:' + ACCENT + ';--xs-accent-rgb:' + ACCENT_RGB + ';--xs-accent-soft:rgba(' + ACCENT_RGB + ',0.14);--xs-accent-text:#D6336C;' +
-            '--xs-panel-bg:' + LIGHT.bg + ';--xs-panel-bg-2:' + LIGHT.bg2 + ';--xs-border:' + LIGHT.border + ';' +
-            '--xs-border-strong:' + LIGHT.borderStrong + ';--xs-text:' + LIGHT.text + ';--xs-text-dim:' + LIGHT.textDim + ';--xs-text-faint:' + LIGHT.textFaint + ';' +
-            '--xs-hover:' + LIGHT.hover + ';--xs-shadow:' + LIGHT.shadow + ';--xs-scroll:' + LIGHT.scroll + ';--xs-blur:' + LIGHT.blur + ';' +
-            '--xs-input-bg:' + LIGHT.inputBg + ';--xs-btn-bg:' + LIGHT.btnBg + ';--xs-name-shadow:' + LIGHT.nameShadow + ';' +
+            '--xs-panel-bg:' + DARK.bg + ';--xs-panel-bg-2:' + DARK.bg2 + ';--xs-border:' + DARK.border + ';' +
+            '--xs-border-strong:' + DARK.borderStrong + ';--xs-text:' + DARK.text + ';--xs-text-dim:' + DARK.textDim + ';--xs-text-faint:' + DARK.textFaint + ';' +
+            '--xs-hover:' + DARK.hover + ';--xs-shadow:' + DARK.shadow + ';--xs-scroll:' + DARK.scroll + ';--xs-blur:' + DARK.blur + ';' +
+            '--xs-input-bg:' + DARK.inputBg + ';--xs-btn-bg:' + DARK.btnBg + ';--xs-name-shadow:' + DARK.nameShadow + ';' +
         '}'];
         THEMES.forEach(function(t) {
             var p = (t.base === 'light') ? LIGHT : DARK;
@@ -2341,7 +2308,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                     s.parentNode && s.parentNode.removeChild(s);
                 }
             });
-        } catch (_) {}
+        } catch (_) { /* 忽略：清理旧样式表失败无影响 */ }
         // 已存在则覆盖内容：避免旧版本残留的样式表（只有 dark-rose 等旧主题名）
         // 导致新版 data-xsact-theme="dark/light" 匹配不到规则、主题切换失效。
         var css = document.getElementById('xsact-qa-styles');
@@ -2380,14 +2347,14 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
 
             /* ===== 右侧面板（暗色战术操作台） ===== */
             '#xsact-qa-panel{',
-            '  position:fixed;top:48px;right:12px;width:300px;height:520px;z-index:90000;',
+            '  position:fixed;top:min(48px,4vh);right:12px;width:min(380px,92vw);height:min(680px,88vh);z-index:90000;',
             '  background:var(--xs-panel-bg);border-radius:14px;',
             '  border:1px solid var(--xs-border);',
-            '  display:flex;flex-direction:column;',
+            '  display:flex;flex-direction:column;box-sizing:border-box;',
             '  backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);',
             '  box-shadow:0 14px 44px var(--xs-shadow);',
             '  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif;',
-            '  min-width:220px;min-height:300px;max-width:560px;max-height:86vh;',
+            '  min-width:220px;min-height:300px;max-width:min(560px,96vw);max-height:min(88vh,820px);',
             '  transition:border-color .2s ease;',
             '}',
             '#xsact-qa-panel.popover-open{',
@@ -2395,7 +2362,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             '  box-shadow:0 0 24px rgba(var(--xs-accent-rgb), 0.15),0 14px 44px var(--xs-shadow);',
             '}',
             '.xsact-qa-panel-inner{',
-            '  display:flex;flex-direction:column;height:100%;',
+            '  display:flex;flex-direction:column;height:100%;min-width:0;min-height:0;box-sizing:border-box;container-type:inline-size;container-name:xsact-panel;',
             '  overflow:hidden;border-radius:14px;',
             '}',
 
@@ -2420,7 +2387,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             '}',
             '.xsact-mode-tab{',
             '  flex:1;padding:8px 8px;font-size:12px;cursor:pointer;',
-            '  background:var(--xs-btn-bg);border:1px solid var(--xs-border);',
+            '  background:var(--xs-btn-bg);border:1px solid var(--xs-border);min-width:32px;min-height:32px;box-sizing:border-box;',
             '  border-radius:8px;color:var(--xs-text-dim);transition:all 0.15s ease;',
             '  display:flex;align-items:center;justify-content:center;gap:6px;',
             '}',
@@ -2438,10 +2405,10 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             '}',
 
             '.xsact-qa-panel-body{',
-            '  flex:1;overflow-y:auto;padding:10px 12px;',
+            '  flex:1;overflow-y:auto;overflow-x:hidden;padding:10px 12px;overscroll-behavior:contain;',
             '  scrollbar-width:thin;scrollbar-color:var(--xs-scroll) transparent;',
-            '  display:grid;grid-template-columns:repeat(auto-fill, minmax(120px, 1fr));gap:6px;',
-            '  align-content:start;',
+            '  display:grid;grid-template-columns:repeat(auto-fill, minmax(108px, 1fr));gap:6px;min-width:0;container-type:inline-size;container-name:xsact-body;',
+            '  align-content:start;min-height:0;',
             '}',
             '.xsact-qa-empty{',
             '  color:var(--xs-text-faint);text-align:center;padding:42px 14px;font-size:12px;line-height:1.6;grid-column:1 / -1;',
@@ -2458,7 +2425,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             '}',
             '.xsact-action-btn:hover{',
             '  background:var(--xs-hover);border-color:var(--xs-border-strong);color:var(--xs-text);',
-            '}', 
+            '}',
             '.xsact-action-btn.sel{',
             '  background:rgba(var(--xs-accent-rgb), 0.12);border-color:var(--xs-accent);border-left-color:var(--xs-accent);color:var(--xs-accent-text);',
             '}',
@@ -2559,7 +2526,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
 
             /* 底部操作栏 */
             '.xsact-qa-panel-footer{',
-            '  display:flex;align-items:center;gap:7px;padding:11px 12px;border-top:1px solid var(--xs-border);',
+            '  display:flex;align-items:center;flex-wrap:wrap;gap:7px;padding:11px 12px;border-top:1px solid var(--xs-border);min-height:0;',
             '}',
             '.xsact-qa-mini-btn{',
             '  background:var(--xs-btn-bg);border:1px solid var(--xs-border);',
@@ -2582,11 +2549,11 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             '#xsact-fav-clear-btn:hover{background:rgba(255,92,92,0.12);border-color:rgba(255,92,92,0.5);color:#FFB3B3;}',
 
             '.xsact-qa-panel-content{',
-            '  flex:1;position:relative;display:flex;flex-direction:column;',
+            '  flex:1;position:relative;display:flex;flex-direction:column;min-width:0;',
             '  overflow:hidden;min-height:0;',
             '}',
             '.xsact-qa-panel-main{',
-            '  flex:1;display:flex;flex-direction:column;min-width:0;',
+            '  flex:1;display:flex;flex-direction:column;min-width:0;min-height:0;',
             '}',
 
             /* ===== 人物列表侧边触发按钮（左向小三角）===== */
@@ -2630,7 +2597,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             /* ===== 人物列表弹出层 ===== */
             '.xsact-char-popover{',
             '  position:absolute;left:-256px;top:46px;',
-            '  width:240px;height:calc(100% - 64px);',
+            '  width:min(260px,85vw);height:calc(100% - 64px);',
             '  display:flex;flex-direction:column;min-height:0;',
             '  background:var(--xs-panel-bg);',
             '  border:1px solid var(--xs-accent);border-radius:12px;',
@@ -2671,7 +2638,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             '  background:rgba(255,92,92,0.12);border-color:rgba(255,92,92,0.4);color:#FFB3B3;',
             '}',
             '.xsact-char-popover-body{',
-            '  flex:1;overflow-y:auto;overflow-x:hidden;scrollbar-width:thin;scrollbar-color:var(--xs-scroll) transparent;',
+            '  flex:1;overflow-y:auto;overflow-x:hidden;scrollbar-width:thin;scrollbar-color:var(--xs-scroll) transparent;overscroll-behavior:contain;',
             '  display:flex;flex-direction:column;min-height:0;',
             '}',
             '.xsact-char-popover-body::-webkit-scrollbar{width:4px;}',
@@ -2727,7 +2694,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
 
             /* ===== 人物部位选择（BC 原生矩形 Zone 地图）===== */
             '.xsact-body-select{',
-            '  flex:1;display:flex;flex-direction:column;align-items:stretch;',
+            '  flex:1;display:flex;flex-direction:column;align-items:stretch;min-height:0;',
             '  min-height:0;padding:6px 4px 0;gap:6px;overflow:hidden;',
             '}',
             '.xsact-body-svg{',
@@ -2798,7 +2765,6 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             '  box-shadow:inset 0 0 0 4.5px #FF3366,',
             '             0 0 30px rgba(255,51,102,1),0 0 60px rgba(255,51,102,0.45);',
             '}',
-            '.xsact-grid-name{display:none;}', // 旧名字标签已迁移到独立视口层
 
             /* 自己模式：给玩家自己的身体线框加个绿色边框提示 */
             '.xsact-body-grid.self .xsact-part-btn{',
@@ -2809,29 +2775,35 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             '  box-shadow:inset 0 0 0 3px rgba(70,224,160,1),',
             '             0 0 18px rgba(70,224,160,0.55),0 0 36px rgba(70,224,160,0.25);',
             '}',
-            '.xsact-name-overlay{',
-            '  position:absolute;top:0;left:0;transform:translateX(-50%);',
-            '  font-size:15px;font-weight:800;color:var(--xs-text);',
-            '  background:var(--xs-panel-bg);padding:3px 12px;border-radius:10px;',
-            '  transition:background-color .3s ease,border-color .3s ease;',
-            '  border:1.5px solid var(--xs-accent);',
-            '  text-shadow:0 1px 2px rgb(0 0 0 / 0.45);',
-            '  box-shadow:0 0 12px rgba(var(--xs-accent-rgb), 0.45);',
-            '  white-space:nowrap;letter-spacing:1px;',
-            '  pointer-events:none;',
-            '}',
-            '.xsact-name-overlay.self{',
-            '  border-color:#46E0A0;',
-            '  box-shadow:0 0 12px rgba(70,224,160,0.45);',
-            '}',
 
             /* ===== 滚动条 ===== */
             '.xsact-qa-panel-body::-webkit-scrollbar{width:6px;}',
             '.xsact-qa-panel-body::-webkit-scrollbar-track{background:transparent;}',
             '.xsact-qa-panel-body::-webkit-scrollbar-thumb{background:var(--xs-scroll);border-radius:3px;}',
 
+            /* ===== 容器查询：面板内容按实际宽度自适应 ===== */
+            '@container xsact-body (max-width: 180px){',
+              '.xsact-qa-panel-body{grid-template-columns:1fr;}',
+              '.xsact-action-btn{padding:10px 9px;font-size:11.5px;}',
+            '}',
+            '@container xsact-body (min-width: 181px) and (max-width: 280px){',
+              '.xsact-qa-panel-body{grid-template-columns:repeat(2,1fr);}',
+            '}',
+            '@container xsact-body (min-width: 281px){',
+              '.xsact-qa-panel-body{grid-template-columns:repeat(auto-fill, minmax(108px, 1fr));}',
+            '}',
+            '@container xsact-panel (max-width: 280px){',
+              '.xsact-qa-panel-footer .xsact-qa-mini-btn span:not(.xsact-pill-dot){display:none;}',
+              '.xsact-qa-panel-footer .xsact-qa-mini-btn{flex:0 0 36px;padding:6px;}',
+              '.xsact-qa-mode-tabs .xsact-mode-tab span{display:none;}',
+              '.xsact-mode-tab .xsact-ico{width:16px;height:16px;}',
+            '}',
+            '@container xsact-panel (max-width: 240px){',
+              '.xsact-panel-head-actions button:not(#xsact-exit-panel-btn){display:none;}',
+            '}',
+
             /* ===== 主题色切换过渡 ===== */
-            '#xsact-qa-panel,#xsact-toggle-btn,.xsact-name-overlay{',
+            '#xsact-qa-panel,#xsact-toggle-btn{',
             '  transition:background-color .3s ease,border-color .3s ease,color .3s ease,box-shadow .3s ease;',
             '}',
             '#xsact-qa-panel{animation:xsact-pop-in .28s cubic-bezier(.16,1,.3,1);}',
@@ -2845,6 +2817,76 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             '#xsact-theme-btn .xsact-theme-icon{display:none;}',
             '[data-xsact-theme="dark"] #xsact-theme-btn .sun{display:block;}',
             '[data-xsact-theme="light"] #xsact-theme-btn .moon{display:block;}',
+
+            /* ===== 视口断点适配（手机/平板/笔记本/大屏） ===== */
+            '@media (max-width: 480px){',
+              '#xsact-qa-panel{',
+                'width:92vw;height:88vh;top:6vh;right:4vw;left:auto;bottom:auto;',
+                'min-width:200px;min-height:260px;max-width:98vw;max-height:94vh;',
+              '}',
+              '#xsact-qa-panel.popover-open #xsact-popover-connector{display:none;}',
+              '#xsact-char-popover-tab{display:none;}',
+              '.xsact-char-popover,',
+              '.xsact-char-popover.right{',
+                'position:absolute;left:0;top:0;width:100%;height:100%;border-radius:14px;',
+                'border-color:var(--xs-accent);animation:xsact-popover-in .2s cubic-bezier(.16,1,.3,1);',
+              '}',
+              '.xsact-qa-panel-header{padding:12px 14px;}',
+              '#xsact-panel-title{font-size:14px;}',
+              '.xsact-qa-mode-tabs{padding:10px 14px;}',
+              '.xsact-mode-tab{padding:12px 10px;font-size:13px;}',
+              '.xsact-qa-panel-body{padding:12px 14px;gap:8px;}',
+              '.xsact-action-btn{padding:14px 12px;font-size:14px;}',
+              '.xsact-qa-panel-footer{padding:10px 14px;gap:8px;}',
+              '.xsact-qa-mini-btn{flex:1 1 0;min-height:44px;padding:10px 8px;font-size:13px;}',
+              '#xsact-fav-clear-btn{flex:0 0 44px;}',
+              '.xsact-body-select{padding:8px 6px;}',
+              '.xsact-body-part-hint{font-size:13px;}',
+            '}',
+            '@media (min-width: 481px) and (max-width: 768px){',
+              '#xsact-qa-panel{width:min(340px,90vw);height:min(640px,86vh);}',
+              '.xsact-action-btn{padding:11px 12px;font-size:13px;}',
+            '}',
+            '@media (min-width: 769px) and (max-width: 1200px){',
+              '#xsact-qa-panel{width:min(360px,40vw);height:min(680px,84vh);}',
+            '}',
+            '@media (min-width: 1201px){',
+              '#xsact-qa-panel{width:min(380px,30vw);height:min(720px,82vh);}',
+            '}',
+            '@media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi){',
+              '.xsact-qa-panel-header,.xsact-qa-panel-footer,.xsact-action-btn,.xsact-char-popover-item{-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;}',
+            '}',
+            /* ── 更新 / 公告横幅 ── */
+            '.xsact-update-banner{',
+            '  margin:8px 10px 0;border:1px solid var(--xs-accent, rgba(255,92,122,0.6));border-radius:10px;',
+            '  background:linear-gradient(180deg, rgba(255,92,122,0.14), rgba(255,92,122,0.06));',
+            '  padding:8px 10px;font-size:12px;color:var(--xs-text);box-shadow:0 4px 14px rgba(0,0,0,0.25);',
+            '}',
+            '.xsact-update-banner.is-announce{',
+            '  border-color:rgba(120,180,255,0.55);background:linear-gradient(180deg, rgba(120,180,255,0.14), rgba(120,180,255,0.05));',
+            '}',
+            '.xsact-update-banner.is-important{',
+            '  border-color:#ffcf5c;background:linear-gradient(180deg, rgba(255,207,92,0.16), rgba(255,207,92,0.06));',
+            '}',
+            '.xsact-ub-head{display:flex;align-items:center;gap:6px;margin-bottom:4px;}',
+            '.xsact-ub-tag{font-weight:700;letter-spacing:.04em;color:var(--xs-accent, #FF5C7A);}',
+            '.xsact-update-banner.is-announce .xsact-ub-tag{color:#7ab8ff;}',
+            '.xsact-ub-ver{font-weight:700;}',
+            '.xsact-ub-title{font-weight:600;}',
+            '.xsact-ub-close{margin-left:auto;background:none;border:none;color:var(--xs-text-dim);font-size:16px;line-height:1;cursor:pointer;padding:0 4px;}',
+            '.xsact-ub-close:hover{color:var(--xs-text);}',
+            '.xsact-ub-sum{margin:2px 0 6px;padding-left:16px;color:var(--xs-text-dim);}',
+            '.xsact-ub-sum li{margin:1px 0;}',
+            '.xsact-ub-msg{margin:2px 0 6px;color:var(--xs-text-dim);line-height:1.4;}',
+            '.xsact-ub-actions{display:flex;gap:6px;flex-wrap:wrap;}',
+            '.xsact-ub-btn{background:var(--xs-btn-bg, rgba(255,255,255,0.08));border:1px solid var(--xs-border, rgba(255,255,255,0.12));',
+            '  color:var(--xs-text);border-radius:7px;padding:4px 9px;font-size:12px;cursor:pointer;}',
+            '.xsact-ub-btn:hover{background:var(--xs-hover, rgba(255,255,255,0.14));}',
+            '.xsact-ub-primary{background:var(--xs-accent, #FF5C7A);border-color:transparent;color:#fff;font-weight:600;}',
+            '.xsact-ub-primary:hover{filter:brightness(1.08);}',
+            '@media (max-width:480px){',
+            '  .xsact-update-banner{font-size:11px;}',
+            '}',
         ].join('\n');
         document.head.appendChild(css);
     }
@@ -2869,7 +2911,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                         typeof CurrentScreen !== 'undefined' && CurrentScreen === 'ChatRoom') {
                         state.charAnchor[C.MemberNumber] = { x: X, y: Y, zoom: Zoom, t: Date.now() };
                     }
-                } catch (_) {}
+                } catch (e) { reportHookError('DrawCharacter锚点', e); }
                 return r;
             });
         } catch (e) {
@@ -2887,14 +2929,14 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                         state.toggleBtnEl.style.display = 'none';
                     }
                 }
-            } catch (_) {}
+            } catch (e) { reportHookError('DrawProcess', e); }
             return result;
         });
 
         // 窗口尺寸变化 → 刷新画布矩形缓存
         try {
             window.addEventListener('resize', function() { refreshCanvasCache(); });
-        } catch (_) {}
+        } catch (_) { /* 忽略：注册 resize 监听失败无影响 */ }
 
         // Hook: ChatRoomClick — 按钮已改为 DOM 元素，此处仅保留扩展点
         state.modApi.hookFunction('ChatRoomClick', 4, function(args, next) {
@@ -2984,9 +3026,6 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             entry.overlapShift = shifts.get(entry.char.MemberNumber) || 0;
             var grid = state.bodyGrids.get(entry.char);
             if (grid) positionGrid(grid, entry);
-            if (state.showNames && !state.nameOverlays.has(entry.char)) createNameOverlay(entry);
-            var overlay = state.nameOverlays.get(entry.char);
-            if (overlay) positionNameOverlay(overlay, entry);
         });
     }
 
@@ -3019,6 +3058,113 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
     }
 
     // ════════════════════════════════════════════════════════════════════════
+    // 更新 / 公告检测（脚本内 5 分钟轮询，玩家端收得到，无需刷新页面）
+    // ════════════════════════════════════════════════════════════════════════
+
+    /* ===== 14.5 更新与公告 ===== */
+    const VERSION_INFO_URL = 'https://heitaoplay.github.io/QuickInteraction/version.json';
+
+    function compareVersion(a, b) {
+        var pa = String(a || '').split('.').map(function(x) { return parseInt(x, 10) || 0; });
+        var pb = String(b || '').split('.').map(function(x) { return parseInt(x, 10) || 0; });
+        var len = Math.max(pa.length, pb.length);
+        for (var i = 0; i < len; i++) {
+            var va = pa[i] || 0, vb = pb[i] || 0;
+            if (va > vb) return 1;
+            if (va < vb) return -1;
+        }
+        return 0;
+    }
+
+    function getUpdateBannerEl() {
+        return document.getElementById('xsact-update-banner');
+    }
+
+    function hideUpdateBanner() {
+        var el = getUpdateBannerEl();
+        if (el) { el.style.display = 'none'; el.innerHTML = ''; el.className = 'xsact-update-banner'; }
+        state.pendingBanner = null;
+    }
+
+    function renderPendingBanner() {
+        if (!state.pendingBanner) return;
+        if (state.pendingBanner.type === 'update') showUpdateBanner(state.pendingBanner.data, true);
+        else showAnnounceBanner(state.pendingBanner.data, true);
+    }
+
+    function showUpdateBanner(info, isRestore) {
+        var el = getUpdateBannerEl();
+        if (!el) { state.pendingBanner = { type: 'update', data: info }; return; }
+        var summary = (info.summary && info.summary.length) ? info.summary : [];
+        var items = summary.slice(0, 4).map(function(s) { return '<li>' + escapeHtml(s) + '</li>'; }).join('');
+        el.className = 'xsact-update-banner' + (info.severity === 'important' ? ' is-important' : '');
+        el.innerHTML = '' +
+            '<div class="xsact-ub-head"><span class="xsact-ub-tag">更新可用</span>' +
+            '<span class="xsact-ub-ver">v' + escapeHtml(info.version) + '</span>' +
+            '<button class="xsact-ub-close" id="xsact-ub-close" title="稍后提醒">×</button></div>' +
+            (items ? '<ul class="xsact-ub-sum">' + items + '</ul>' : '') +
+            '<div class="xsact-ub-actions">' +
+            (info.detailsUrl ? '<button class="xsact-ub-btn xsact-ub-primary" id="xsact-ub-details">查看详情</button>' : '') +
+            '<button class="xsact-ub-btn" id="xsact-ub-later">稍后</button>' +
+            '<button class="xsact-ub-btn" id="xsact-ub-ignore">不再提示此版本</button>' +
+            '</div>';
+        el.style.display = '';
+        var close = el.querySelector('#xsact-ub-close');
+        var later = el.querySelector('#xsact-ub-later');
+        var ignore = el.querySelector('#xsact-ub-ignore');
+        var details = el.querySelector('#xsact-ub-details');
+        if (close) close.onclick = function() { hideUpdateBanner(); };
+        if (later) later.onclick = function() { hideUpdateBanner(); persist(S_UPDATE_DISMISSED, info.version); };
+        if (ignore) ignore.onclick = function() { hideUpdateBanner(); persist(S_UPDATE_DISMISSED, info.version); };
+        if (details && info.detailsUrl) details.onclick = function() { window.open(info.detailsUrl, '_blank', 'noopener'); };
+    }
+
+    function showAnnounceBanner(ann, isRestore) {
+        var el = getUpdateBannerEl();
+        if (!el) { state.pendingBanner = { type: 'announce', data: ann }; return; }
+        el.className = 'xsact-update-banner is-announce' + (ann.severity === 'important' ? ' is-important' : '');
+        el.innerHTML = '' +
+            '<div class="xsact-ub-head"><span class="xsact-ub-tag">公告</span>' +
+            (ann.title ? '<span class="xsact-ub-title">' + escapeHtml(ann.title) + '</span>' : '') +
+            '<button class="xsact-ub-close" id="xsact-ub-close" title="知道了">×</button></div>' +
+            (ann.message ? '<div class="xsact-ub-msg">' + escapeHtml(ann.message) + '</div>' : '') +
+            (ann.detailsUrl ? '<div class="xsact-ub-actions"><button class="xsact-ub-btn xsact-ub-primary" id="xsact-ub-details">查看详情</button></div>' : '');
+        el.style.display = '';
+        var close = el.querySelector('#xsact-ub-close');
+        var details = el.querySelector('#xsact-ub-details');
+        if (close) close.onclick = function() { hideUpdateBanner(); };
+        if (details && ann.detailsUrl) details.onclick = function() { window.open(ann.detailsUrl, '_blank', 'noopener'); };
+    }
+
+    async function checkUpdate() {
+        try {
+            var res = await fetch(VERSION_INFO_URL + '?t=' + Date.now(), { cache: 'no-store' });
+            if (!res.ok) return;
+            var info = await res.json();
+            // 1) 版本更新横幅
+            if (compareVersion(info.version, VERSION) > 0) {
+                var dismissed = loadSetting(S_UPDATE_DISMISSED, '');
+                if (dismissed !== info.version) showUpdateBanner(info);
+            }
+            // 2) 主动公告（独立于版本，即使版本没变也能推）
+            if (info.announcement && info.announcement.id) {
+                var seen = loadSetting(S_LAST_ANNOUNCE, '');
+                if (info.announcement.id !== seen) {
+                    showAnnounceBanner(info.announcement);
+                    persist(S_LAST_ANNOUNCE, info.announcement.id);
+                }
+            }
+        } catch (e) { /* 离线 / 跨域失败：静默跳过，不影响游戏 */ }
+    }
+
+    function startUpdateChecker() {
+        if (state.updateTimer) return;
+        // 加载后 30 秒先查一次，之后每 5 分钟轮询
+        setTimeout(function() { checkUpdate().catch(function() {}); }, 30000);
+        state.updateTimer = setInterval(function() { checkUpdate().catch(function() {}); }, 5 * 60 * 1000);
+    }
+
+    // ════════════════════════════════════════════════════════════════════════
     // 初始化入口
     // ════════════════════════════════════════════════════════════════════════
 
@@ -3046,7 +3192,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                 for (var mi = 0; mi < mods.length; mi++) {
                     if (mods[mi].name === '快捷互动') { state.modApi = mods[mi]; break; }
                 }
-            } catch (_) {}
+            } catch (_) { /* 忽略：取回已注册 mod 失败则降级为空对象继续运行 */ }
             if (!state.modApi) state.modApi = {}; // 降级：无 state.modApi 但继续运行
         }
 
@@ -3064,7 +3210,6 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         state.presets = loadSetting(S_PRESETS, []);
         state.lastAction = loadStorage(S_LAST, null);
         state.combos = loadSetting(S_COMBOS, []);
-        state.showNames = loadSetting(S_SHOW_NAMES, false);
 
         // 恢复主题设置（优先读游戏账号，回退本地）
         state.theme = loadSetting(S_THEME, 'dark');
@@ -3088,6 +3233,9 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         if (typeof CurrentScreen !== 'undefined') {
             try { startVisibilityGuard(); guardToggleVisibility(); } catch (e) { console.warn('[XSAct-QA] 启动浮动开关守卫失败:', e); }
         }
+
+        // 启动更新/公告检测（脚本内 5 分钟轮询，玩家端收到，无需刷新页面）
+        try { startUpdateChecker(); } catch (e) { console.warn('[XSAct-QA] 启动更新检测失败:', e); }
 
         // 暴露调试/控制接口（无论前面是否出错，必须暴露）
         window.__XSActQA = {
@@ -3125,7 +3273,12 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             get selectedPart() { return state.selectedPart; },
             makeActivityPacket: makeActivityPacket,
             findBestItemForActivityAsset: findBestItemForActivityAsset,
-            version: VERSION
+            version: VERSION,
+            // ── 更新 / 公告 ──
+            checkUpdate: checkUpdate,
+            showUpdateBanner: showUpdateBanner,
+            showAnnounceBanner: showAnnounceBanner,
+            hideUpdateBanner: hideUpdateBanner
         };
 
         logD('✅ 初始化完成 · 版本 ' + VERSION);
