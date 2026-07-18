@@ -2,7 +2,7 @@
 // @name         快捷互动 (QuickInteraction)
 // @name:zh      快捷互动
 // @namespace    https://github.com/heitaoplay/QuickInteraction
-// @version      0.7.27
+// @version      1.0.0
 // @description  Bondage Club - 统一动作操作台。一键进入动作模式，在聊天室场景内直接点人物部位选动作，绕过原生5步嵌套菜单。
 // @author       Tao MUSE
 // @homepageURL  https://github.com/heitaoplay/QuickInteraction
@@ -62,7 +62,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         if (!_serverSyncWarned) { _serverSyncWarned = true; toast('设置同步到服务器失败，已保留在本地', '#FF5C5C'); }
     }
 
-    const VERSION = '0.7.27';
+    const VERSION = '1.0.0';
 
     // ── 存储键 ──
     const S_ENABLED = 'xsact_qa_enabled';
@@ -2902,6 +2902,10 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             '.xsact-update-banner.is-important{',
             '  border-color:#ffcf5c;background:linear-gradient(180deg, rgba(255,207,92,0.16), rgba(255,207,92,0.06));',
             '}',
+            '.xsact-update-banner.is-available{',
+            '  border-color:var(--xs-accent, rgba(255,92,122,0.6));background:linear-gradient(180deg, rgba(255,92,122,0.14), rgba(255,92,122,0.06));',
+            '}',
+            '.xsact-update-banner.is-available .xsact-ub-tag{color:var(--xs-accent, #FF5C7A);}',
             '.xsact-ub-head{display:flex;align-items:center;gap:6px;margin-bottom:4px;}',
             '.xsact-ub-tag{font-weight:700;letter-spacing:.04em;color:var(--xs-accent, #FF5C7A);}',
             '.xsact-update-banner.is-announce .xsact-ub-tag{color:#7ab8ff;}',
@@ -2911,7 +2915,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             '.xsact-ub-close:hover{color:var(--xs-text);}',
             '.xsact-ub-sum{margin:2px 0 6px;padding-left:16px;color:var(--xs-text-dim);}',
             '.xsact-ub-sum li{margin:1px 0;}',
-            '.xsact-ub-msg{margin:2px 0 6px;color:var(--xs-text-dim);line-height:1.4;}',
+            '.xsact-ub-msg{margin:2px 0 6px;color:var(--xs-text-dim);line-height:1.4;white-space:pre-line;}',
             '.xsact-ub-actions{display:flex;gap:6px;flex-wrap:wrap;}',
             '.xsact-ub-btn{background:var(--xs-btn-bg, rgba(255,255,255,0.08));border:1px solid var(--xs-border, rgba(255,255,255,0.12));',
             '  color:var(--xs-text);border-radius:7px;padding:4px 9px;font-size:12px;cursor:pointer;}',
@@ -3156,9 +3160,15 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
     function showAnnounceBanner(ann, isRestore) {
         var el = getUpdateBannerEl();
         if (!el) { state.pendingBanner = { type: 'announce', data: ann }; return; }
-        el.className = 'xsact-update-banner is-announce' + (ann.severity === 'important' ? ' is-important' : '');
+        var sev = ann.severity || 'info';
+        var tagText = '公告';
+        var cls = 'xsact-update-banner';
+        if (sev === 'important') { cls += ' is-important'; tagText = '重要'; }
+        else if (sev === 'available') { cls += ' is-available'; tagText = '可用'; }
+        else { cls += ' is-announce'; tagText = '公告'; }
+        el.className = cls;
         el.innerHTML = '' +
-            '<div class="xsact-ub-head"><span class="xsact-ub-tag">公告</span>' +
+            '<div class="xsact-ub-head"><span class="xsact-ub-tag">' + escapeHtml(tagText) + '</span>' +
             (ann.title ? '<span class="xsact-ub-title">' + escapeHtml(ann.title) + '</span>' : '') +
             '<button class="xsact-ub-close" id="xsact-ub-close" title="知道了">×</button></div>' +
             (ann.message ? '<div class="xsact-ub-msg">' + escapeHtml(ann.message) + '</div>' : '') +

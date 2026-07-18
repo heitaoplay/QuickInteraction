@@ -29,17 +29,20 @@ const outFile = path.join(outDir, 'main.js');
 fs.writeFileSync(outFile, main);
 
 // 生成 version.json（供脚本端 5 分钟轮询检测「更新可用 / 公告」）
-// 只有 version 字段由构建自动填；summary / announcement 在发布时由开发者填写后部署。
+// 以仓库根 version.json（开发者维护的蓝本，含 summary / announcement）为基准，
+// 仅把 version 字段与源代码的 VERSION 同步，保留公告内容，避免发布时丢失。
+const rootVersionPath = path.join(root, 'version.json');
+let base = {};
+try { base = JSON.parse(fs.readFileSync(rootVersionPath, 'utf8')); } catch (_) { /* 无蓝本：用空模板 */ }
 const vm = main.match(/const VERSION\s*=\s*'([^']+)'/);
 const version = vm ? vm[1] : '0.0.0';
-const today = new Date().toISOString().slice(0, 10);
 const versionInfo = {
   version,
-  date: today,
-  severity: 'normal',
-  summary: [],
-  detailsUrl: `https://github.com/heitaoplay/QuickInteraction/releases/tag/v${version}`,
-  announcement: null
+  date: base.date || new Date().toISOString().slice(0, 10),
+  severity: base.severity || 'normal',
+  summary: base.summary || [],
+  detailsUrl: base.detailsUrl || `https://github.com/heitaoplay/QuickInteraction/releases/tag/v${version}`,
+  announcement: (base.announcement !== undefined ? base.announcement : null)
 };
 fs.writeFileSync(path.join(outDir, 'version.json'), JSON.stringify(versionInfo, null, 2) + '\n');
 
