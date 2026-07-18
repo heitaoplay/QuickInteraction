@@ -10,10 +10,10 @@
   ],
   "detailsUrl": "https://github.com/heitaoplay/QuickInteraction/releases",
   "announcement": {
-    "id": "2026-07-19-echo-sync-fix",
+    "id": "2026-07-20-custom-action-teaser",
     "severity": "info",
-    "title": "echo 自定义动作同步修复",
-    "message": "已修复通过 XSAct 触发 echo-activity-ext 自定义动作时，对方界面显示乱码（原始活动键）的问题。\n\n现在无论对方是否安装 echo-activity-ext，都能正确看到动作文本，与 BC 原生触发行为一致。修复仅针对 echo 自定义动作，不影响其他功能。\n\n如未自动更新，请刷新页面或重新安装插件。",
+    "title": "「自定义动作」新功能预告",
+    "message": "快捷互动即将迎来全新的「自定义动作」功能——在你的面板里直接创建、编辑、管理属于你的专属动作。\n\n核心亮点：\n· 现代直观的创建流程，告别繁琐的多层菜单\n· 一键插入角色占位符，实时预览对话效果\n· 身体部位选择方式：复用游戏内身体地图，精确选部位、所见即所得\n· 跨客户端可见，对方无需安装也能看到你的动作\n\n功能正在开发中，敬请期待正式上线。",
     "detailsUrl": "https://github.com/heitaoplay/QuickInteraction/releases"
   }
 }
