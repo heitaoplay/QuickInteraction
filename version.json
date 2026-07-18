@@ -8,12 +8,5 @@
     "优化：浅色模式配色/对比度、部位线框深灰描边+玫红高亮、状态文字深色化",
     "精简：自己模式开关提示文案"
   ],
-  "detailsUrl": "https://github.com/heitaoplay/QuickInteraction/releases",
-  "announcement": {
-    "id": "2026-07-18-v101-announce",
-    "severity": "normal",
-    "title": "XSAct 快捷互动 v1.0.1 小更新",
-    "message": "本次为稳定性与体验优化小更新：\n• 修复：点击右侧动作或「加入组合」时，左侧人物浮层不再误关闭；\n• 优化：浅色模式配色与对比度提升，长时间使用更舒适；\n• 优化：身体部位线框在浅色下改为深灰描边 + 玫红高亮、选中更清晰，收藏 / 自己模式等状态文字在浅色下改为深色系更易读；\n• 精简：「自己模式」开关提示文案更简洁。\n如遇到问题随时告诉我。",
-    "date": "2026-07-18"
-  }
+  "detailsUrl": "https://github.com/heitaoplay/QuickInteraction/releases"
 }
