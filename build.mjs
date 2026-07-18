@@ -42,7 +42,7 @@ const versionInfo = {
   severity: base.severity || 'normal',
   summary: base.summary || [],
   detailsUrl: base.detailsUrl || `https://github.com/heitaoplay/QuickInteraction/releases/tag/v${version}`,
-  announcement: (base.announcement !== undefined ? base.announcement : null)
+  announcement: (base.announcement !== undefined ? base.announcement : undefined)
 };
 fs.writeFileSync(path.join(outDir, 'version.json'), JSON.stringify(versionInfo, null, 2) + '\n');
 
