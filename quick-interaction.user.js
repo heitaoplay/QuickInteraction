@@ -62,7 +62,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         if (!_serverSyncWarned) { _serverSyncWarned = true; toast('设置同步到服务器失败，已保留在本地', '#FF5C5C'); }
     }
 
-    const VERSION = '1.0.0';
+    const VERSION = '1.0.1';
 
     // ── 存储键 ──
     const S_ENABLED = 'xsact_qa_enabled';
@@ -908,13 +908,13 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         }
     }
 
-    /** 切换「自己」模式：开启后可选中并对自己执行动作 */
+    /** 切换自己模式 */
     function toggleSelfMode() {
         state.selfModeActive = !state.selfModeActive;
         persist(S_SELF, state.selfModeActive);
         updateSelfButtonVisual();
         if (state.isActive) refreshBodyGrids();
-        toast(state.selfModeActive ? '自己模式：开启 · 现在可以点击自己身体' : '自己模式：关闭',
+        toast(state.selfModeActive ? '自己模式：开启' : '自己模式：关闭',
               state.selfModeActive ? '#46E0A0' : '#888');
     }
     function updateSelfButtonVisual() {
@@ -1215,7 +1215,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
     </div>\
   </div>\
   <div class="xsact-qa-panel-footer">\
-    <button class="xsact-qa-mini-btn xsact-toggle-pill" id="xsact-self-btn" title="切换自己模式：开启后可选中并对自己执行动作">' + svgIcon('user', 14) + '<span>自己</span><span class="xsact-pill-dot"></span></button>\
+    <button class="xsact-qa-mini-btn xsact-toggle-pill" id="xsact-self-btn" title="切换自己模式">' + svgIcon('user', 14) + '<span>自己</span><span class="xsact-pill-dot"></span></button>\
     <button class="xsact-qa-mini-btn xsact-toggle-pill" id="xsact-all-btn" title="切换全员范围：开启后，动作将对房间内所有人执行">' + svgIcon('users', 14) + '<span>全员</span><span class="xsact-pill-dot"></span></button>\
     <button class="xsact-qa-mini-btn xsact-toggle-pill" id="xsact-fav-btn" title="收藏模式：开启后点击动作会加入/取消收藏">' + svgIcon('star', 14) + '<span>收藏</span><span class="xsact-pill-dot"></span></button>\
     <button class="xsact-qa-mini-btn" id="xsact-fav-clear-btn" title="清空全部收藏动作">' + svgIcon('trash', 14) + '</button>\
@@ -2005,7 +2005,8 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
 
         // 绑定动作按钮点击：收藏模式下加入/取消收藏，否则执行
         listEl.querySelectorAll('.xsact-action-btn').forEach(function(btn) {
-            btn.addEventListener('click', function() {
+            btn.addEventListener('click', function(e) {
+                e.stopPropagation(); // 避免冒泡到面板导致左侧人物浮层关闭
                 var actName = btn.dataset.name;
                 var act = actions.find(function(a) { return a.Name === actName; }) || { Name: actName, Item: null };
                 state.selectedAction = actName;
@@ -2026,7 +2027,8 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         // 绑定「加入组合」点击（编辑模式）
         if (isEditing) {
             listEl.querySelectorAll('.xsact-add-to-combo').forEach(function(btn) {
-                btn.addEventListener('click', function() {
+                btn.addEventListener('click', function(e) {
+                    e.stopPropagation(); // 避免冒泡到面板导致左侧人物浮层关闭
                     var actName = btn.parentNode.dataset.name;
                     var act = actions.find(function(a) { return a.Name === actName; }) || { Name: actName, Item: null, translatedName: actName };
                     var lbl = act.translatedName || getActivityLabel(act.Name, partGroup);
@@ -2289,13 +2291,25 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             btnBg:'rgba(255,255,255,0.05)', nameShadow:'rgba(255,92,122,0.45)'
         };
         var LIGHT = {
-            bg:'rgba(255,252,253,0.97)', bg2:'#F1F0F4', border:'rgba(28,22,32,0.10)',
-            borderStrong:'rgba(28,22,32,0.22)', text:'#2A2F3A', textDim:'#6B7480',
-            textFaint:'#9AA3AF', hover:'#E4E2EA', shadow:'0 14px 40px rgba(60,40,80,0.18)',
-            scroll:'#C9CCD3', blur:'blur(14px)', inputBg:'#FFFFFF',
-            btnBg:'rgba(28,22,32,0.05)', nameShadow:'rgba(255,92,122,0.35)'
+            bg:'rgba(248,245,251,0.97)', bg2:'#E9E6EF', border:'rgba(28,22,32,0.14)',
+            borderStrong:'rgba(28,22,32,0.32)', text:'#1E2430', textDim:'#4A5568',
+            textFaint:'#7B8494', hover:'#DCD9E2', shadow:'0 14px 40px rgba(60,40,80,0.16)',
+            scroll:'#B8BCC6', blur:'blur(14px)', inputBg:'#FFFFFF',
+            btnBg:'rgba(28,22,32,0.07)', nameShadow:'rgba(255,92,122,0.35)'
         };
         var ACCENT = '#FF5C7A', ACCENT_RGB = '255,92,122';
+        var ZONES = {
+            dark: {
+                stroke:'rgba(255,255,255,0.35)', strokeHover:'#fff', strokeSelected:'var(--xs-accent)',
+                fill:'rgba(' + ACCENT_RGB + ',0.08)', fillHover:'rgba(' + ACCENT_RGB + ',0.26)', fillSelected:'rgba(' + ACCENT_RGB + ',0.32)',
+                filter:'drop-shadow(0 0 10px rgba(' + ACCENT_RGB + ',0.06))'
+            },
+            light: {
+                stroke:'rgba(74,68,88,0.70)', strokeHover:'var(--xs-accent)', strokeSelected:'#B02A4E',
+                fill:'rgba(' + ACCENT_RGB + ',0.10)', fillHover:'rgba(' + ACCENT_RGB + ',0.22)', fillSelected:'rgba(' + ACCENT_RGB + ',0.30)',
+                filter:'drop-shadow(0 0 6px rgba(' + ACCENT_RGB + ',0.10))'
+            }
+        };
         // 默认回退（置于最前）：:root 与 [data-xsact-theme] 特异性相同(0,1,0)，
         // 必须让主题规则靠后、优先生效；属性缺失时才回退到这里。
         var blocks = [':root{' +
@@ -2304,10 +2318,14 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             '--xs-border-strong:' + DARK.borderStrong + ';--xs-text:' + DARK.text + ';--xs-text-dim:' + DARK.textDim + ';--xs-text-faint:' + DARK.textFaint + ';' +
             '--xs-hover:' + DARK.hover + ';--xs-shadow:' + DARK.shadow + ';--xs-scroll:' + DARK.scroll + ';--xs-blur:' + DARK.blur + ';' +
             '--xs-input-bg:' + DARK.inputBg + ';--xs-btn-bg:' + DARK.btnBg + ';--xs-name-shadow:' + DARK.nameShadow + ';' +
+            '--xs-zone-stroke:' + ZONES.dark.stroke + ';--xs-zone-stroke-hover:' + ZONES.dark.strokeHover + ';--xs-zone-stroke-selected:' + ZONES.dark.strokeSelected + ';' +
+            '--xs-zone-fill:' + ZONES.dark.fill + ';--xs-zone-fill-hover:' + ZONES.dark.fillHover + ';--xs-zone-fill-selected:' + ZONES.dark.fillSelected + ';' +
+            '--xs-zone-filter:' + ZONES.dark.filter + ';' +
         '}'];
         THEMES.forEach(function(t) {
             var p = (t.base === 'light') ? LIGHT : DARK;
-            var accentText = (t.base === 'light') ? '#D6336C' : '#FFD6DF';
+            var z = (t.base === 'light') ? ZONES.light : ZONES.dark;
+            var accentText = (t.base === 'light') ? '#B02A4E' : '#FFD6DF';
             blocks.push('[data-xsact-theme="' + t.id + '"]{' +
                 '--xs-accent:' + ACCENT + ';' +
                 '--xs-accent-rgb:' + ACCENT_RGB + ';' +
@@ -2327,6 +2345,13 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                 '--xs-input-bg:' + p.inputBg + ';' +
                 '--xs-btn-bg:' + p.btnBg + ';' +
                 '--xs-name-shadow:' + p.nameShadow + ';' +
+                '--xs-zone-stroke:' + z.stroke + ';' +
+                '--xs-zone-stroke-hover:' + z.strokeHover + ';' +
+                '--xs-zone-stroke-selected:' + z.strokeSelected + ';' +
+                '--xs-zone-fill:' + z.fill + ';' +
+                '--xs-zone-fill-hover:' + z.fillHover + ';' +
+                '--xs-zone-fill-selected:' + z.fillSelected + ';' +
+                '--xs-zone-filter:' + z.filter + ';' +
             '}');
         });
         return blocks.join('\n');
@@ -2389,7 +2414,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             '  box-shadow:0 14px 44px var(--xs-shadow);',
             '  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif;',
             '  min-width:220px;min-height:300px;max-width:min(560px,96vw);max-height:min(88vh,820px);',
-            '  transition:border-color .2s ease;',
+            '  transition:border-color .2s ease,box-shadow .2s ease;',
             '}',
             '#xsact-qa-panel.popover-open{',
             '  border-left-color:var(--xs-accent);',
@@ -2734,22 +2759,22 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             '.xsact-body-svg{',
             '  flex:1;min-height:0;width:100%;height:100%;',
             '  align-self:center;overflow:visible;',
-            '  filter:drop-shadow(0 0 10px rgba(var(--xs-accent-rgb), 0.06));',
+            '  filter:var(--xs-zone-filter);',
             '}',
-            /* 矩形热区：默认淡描边，hover/selected 点亮，呼应暗色战术面板 */
+            /* 矩形热区：主题感知描边；light 下深灰/玫红，dark 下保持白色霓虹 */
             '.xsact-body-part-zone{',
-            '  fill:rgba(var(--xs-accent-rgb), 0.08);',
-            '  stroke:rgba(255,255,255,0.32);stroke-width:1.2;',
+            '  fill:var(--xs-zone-fill);',
+            '  stroke:var(--xs-zone-stroke);stroke-width:1.2;',
             '  cursor:pointer;transition:fill .12s,stroke .12s,stroke-width .12s,filter .12s;',
             '  pointer-events:all;vector-effect:non-scaling-stroke;',
             '}',
             '.xsact-body-part-zone:hover,.xsact-body-part-zone.hover{',
-            '  fill:rgba(var(--xs-accent-rgb), 0.26);stroke:#fff;stroke-width:2.5;',
+            '  fill:var(--xs-zone-fill-hover);stroke:var(--xs-zone-stroke-hover);stroke-width:2.5;',
             '  filter:drop-shadow(0 0 8px rgba(var(--xs-accent-rgb), 0.6));',
             '}',
             '.xsact-body-part-zone.selected{',
-            '  fill:rgba(var(--xs-accent-rgb), 0.32);',
-            '  stroke:var(--xs-accent);stroke-width:2.5;',
+            '  fill:var(--xs-zone-fill-selected);',
+            '  stroke:var(--xs-zone-stroke-selected);stroke-width:2.5;',
             '  filter:drop-shadow(0 0 10px rgba(var(--xs-accent-rgb), 0.55));',
             '}',
             '.xsact-body-part-hint{',
@@ -2890,6 +2915,15 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             '@media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi){',
               '.xsact-qa-panel-header,.xsact-qa-panel-footer,.xsact-action-btn,.xsact-char-popover-item{-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;}',
             '}',
+            /* ===== light 主题下高对比文字修正 ===== */
+            '[data-xsact-theme="light"] .xsact-action-btn.fav{ color:#7D5A10; }',
+            '[data-xsact-theme="light"] .xsact-action-btn.fav:hover{ color:#5C4508; }',
+            '[data-xsact-theme="light"] .xsact-add-to-combo{ color:#1B7A5C; }',
+            '[data-xsact-theme="light"] .xsact-add-to-combo:hover{ color:#0F5C44; }',
+            '[data-xsact-theme="light"] #xsact-self-btn.on{ color:#1B7A5C; }',
+            '[data-xsact-theme="light"] .xsact-char-popover-item.self{ color:#1B7A5C; }',
+            '[data-xsact-theme="light"] .xsact-char-popover-item.self:hover{ color:#0F5C44; }',
+            '[data-xsact-theme="light"] .xsact-char-popover-item.self.selected{ color:#1B7A5C; }',
             /* ── 更新 / 公告横幅 ── */
             '.xsact-update-banner{',
             '  margin:8px 10px 0;border:1px solid var(--xs-accent, rgba(255,92,122,0.6));border-radius:10px;',
