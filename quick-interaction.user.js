@@ -2,7 +2,7 @@
 // @name         快捷互动 (QuickInteraction)
 // @name:zh      快捷互动
 // @namespace    https://github.com/heitaoplay/QuickInteraction
-// @version      0.7.26
+// @version      0.7.27
 // @description  Bondage Club - 统一动作操作台。一键进入动作模式，在聊天室场景内直接点人物部位选动作，绕过原生5步嵌套菜单。
 // @author       Tao MUSE
 // @homepageURL  https://github.com/heitaoplay/QuickInteraction
@@ -47,7 +47,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         console.log.apply(console, args);
     }
 
-    const VERSION = '0.7.26';
+    const VERSION = '0.7.27';
 
     // ── 存储键 ──
     const S_ENABLED = 'xsact_qa_enabled';
@@ -1629,64 +1629,33 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         });
     }
 
-    /** 在左侧浮层渲染人物部位选择（SVG 剪影 + 线框热区） */
+    /** 渲染左侧浮层「部位选择」视图：用 BC 原生 Zone 矩形拼出矩形身体地图。
+     *  与游戏内浮动线框共用 getPartZones() 同一套真值坐标，保持「原版矩形选择」体感。 */
     function renderPopoverParts(charObj) {
         var bodyEl = state.actionPanelEl && state.actionPanelEl.querySelector('#xsact-char-popover-body');
         if (!bodyEl) return;
-        var svg = '<svg class="xsact-body-svg" viewBox="0 0 220 520" xmlns="http://www.w3.org/2000/svg">' +
-            '<defs>' +
-            '<linearGradient id="xsact-body-grad" x1="0" y1="0" x2="0" y2="1">' +
-            '<stop offset="0%" stop-color="rgba(var(--xs-accent-rgb), 0.06)"/>' +
-            '<stop offset="100%" stop-color="rgba(var(--xs-accent-rgb), 0.01)"/>' +
-            '</linearGradient>' +
-            '<filter id="xsact-body-glow" x="-50%" y="-50%" width="200%" height="200%">' +
-            '<feGaussianBlur stdDeviation="2.5" result="blur"/>' +
-            '<feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>' +
-            '</filter>' +
-            '</defs>' +
-            '<g class="xsact-body-silhouette">' +
-            '<path d="M 110 48 C 90 48, 82 66, 82 86 C 82 106, 92 120, 104 126 L 104 132 C 84 138, 70 150, 62 170 C 54 190, 52 220, 56 250 C 58 280, 64 310, 68 340 L 72 500 C 72 510, 80 514, 88 514 C 96 514, 100 510, 100 500 L 100 370 C 100 360, 108 354, 116 354 C 124 354, 132 360, 132 370 L 132 500 C 132 510, 136 514, 144 514 C 152 514, 160 510, 160 500 L 164 340 C 168 310, 174 280, 176 250 C 180 220, 178 190, 170 170 C 162 150, 148 138, 128 132 L 128 126 C 140 120, 150 106, 150 86 C 150 66, 142 48, 110 48 Z"/>' +
-            '<path d="M 74 152 C 60 158, 54 176, 56 204 L 58 260 C 60 270, 66 274, 72 270 C 78 266, 78 256, 76 246 L 70 204 C 66 182, 70 164, 78 150 Z"/>' +
-            '<path d="M 146 152 C 160 158, 166 176, 164 204 L 162 260 C 160 270, 154 274, 148 270 C 142 266, 142 256, 144 246 L 150 204 C 154 182, 150 164, 142 150 Z"/>' +
-            '<ellipse cx="110" cy="84" rx="20" ry="26"/>' +
-            '<path d="M 88 58 C 74 64, 70 85, 74 110 C 76 130, 82 150, 88 165 L 92 160 C 86 140, 82 115, 84 95 C 86 78, 94 65, 106 60 C 100 60, 92 60, 88 58 Z M 132 58 C 128 60, 120 60, 114 60 C 126 65, 134 78, 136 95 C 138 115, 134 140, 128 160 L 132 165 C 138 150, 144 130, 146 110 C 150 85, 146 64, 132 58 Z"/>' +
-            '</g>' +
-            '<ellipse class="xsact-body-part-zone" data-group="ItemHood" cx="110" cy="65" rx="48" ry="56" data-label="头套"/>' +
-            '<ellipse class="xsact-body-part-zone" data-group="ItemHead" cx="110" cy="65" rx="39" ry="47" data-label="头"/>' +
-            '<ellipse class="xsact-body-part-zone" data-group="ItemEars" cx="73" cy="65" rx="8" ry="14" data-label="耳"/>' +
-            '<ellipse class="xsact-body-part-zone" data-group="ItemEars" cx="147" cy="65" rx="8" ry="14" data-label="耳"/>' +
-            '<ellipse class="xsact-body-part-zone" data-group="ItemNose" cx="110" cy="56" rx="7" ry="10" data-label="鼻"/>' +
-            '<ellipse class="xsact-body-part-zone" data-group="ItemMouth" cx="110" cy="86" rx="20" ry="11" data-label="口"/>' +
-            '<ellipse class="xsact-body-part-zone" data-group="ItemMouth2" cx="86" cy="88" rx="12" ry="8" data-label="口2"/>' +
-            '<ellipse class="xsact-body-part-zone" data-group="ItemMouth3" cx="134" cy="88" rx="12" ry="8" data-label="口3"/>' +
-            '<rect class="xsact-body-part-zone" data-group="ItemNeck" x="86" y="112" width="48" height="38" rx="14" data-label="颈"/>' +
-            '<rect class="xsact-body-part-zone" data-group="ItemNeckAccessories" x="76" y="120" width="10" height="22" rx="4" data-label="颈饰"/>' +
-            '<rect class="xsact-body-part-zone" data-group="ItemNeckAccessories" x="134" y="120" width="10" height="22" rx="4" data-label="颈饰"/>' +
-            '<rect class="xsact-body-part-zone" data-group="ItemNeckRestraints" x="95" y="116" width="30" height="12" rx="4" data-label="颈束"/>' +
-            '<rect class="xsact-body-part-zone" data-group="ItemBreast" x="68" y="155" width="84" height="55" rx="16" data-label="胸"/>' +
-            '<ellipse class="xsact-body-part-zone" data-group="ItemNipples" cx="88" cy="183" rx="14" ry="10" data-label="乳"/>' +
-            '<ellipse class="xsact-body-part-zone" data-group="ItemNipples" cx="132" cy="183" rx="14" ry="10" data-label="乳"/>' +
-            '<ellipse class="xsact-body-part-zone" data-group="ItemNipplesPiercings" cx="88" cy="183" rx="6" ry="5" data-label="乳穿"/>' +
-            '<ellipse class="xsact-body-part-zone" data-group="ItemNipplesPiercings" cx="132" cy="183" rx="6" ry="5" data-label="乳穿"/>' +
-            '<rect class="xsact-body-part-zone" data-group="ItemTorso" x="72" y="213" width="76" height="52" rx="12" data-label="躯干"/>' +
-            '<rect class="xsact-body-part-zone" data-group="ItemTorso2" x="76" y="270" width="68" height="42" rx="12" data-label="腹"/>' +
-            '<rect class="xsact-body-part-zone" data-group="ItemArms" x="34" y="165" width="25" height="110" rx="13" transform="rotate(5 46 220)" data-label="手臂"/>' +
-            '<rect class="xsact-body-part-zone" data-group="ItemArms" x="161" y="165" width="25" height="110" rx="13" transform="rotate(-5 173 220)" data-label="手臂"/>' +
-            '<ellipse class="xsact-body-part-zone" data-group="ItemHands" cx="46" cy="290" rx="11" ry="16" data-label="手"/>' +
-            '<ellipse class="xsact-body-part-zone" data-group="ItemHands" cx="174" cy="290" rx="11" ry="16" data-label="手"/>' +
-            '<path class="xsact-body-part-zone" data-group="ItemPelvis" d="M 72 318 L 148 318 L 150 365 L 70 365 Z" data-label="腰臀"/>' +
-            '<ellipse class="xsact-body-part-zone" data-group="ItemVulva" cx="110" cy="345" rx="18" ry="12" data-label="私处"/>' +
-            '<ellipse class="xsact-body-part-zone" data-group="ItemVulvaPiercings" cx="110" cy="345" rx="8" ry="5" data-label="阴穿"/>' +
-            '<ellipse class="xsact-body-part-zone" data-group="ItemButt" cx="110" cy="360" rx="28" ry="16" data-label="臀后"/>' +
-            '<rect class="xsact-body-part-zone" data-group="ItemLegs" x="78" y="370" width="26" height="120" rx="10" data-label="腿"/>' +
-            '<rect class="xsact-body-part-zone" data-group="ItemLegs" x="116" y="370" width="26" height="120" rx="10" data-label="腿"/>' +
-            '<ellipse class="xsact-body-part-zone" data-group="ItemFeet" cx="91" cy="498" rx="14" ry="9" data-label="脚"/>' +
-            '<ellipse class="xsact-body-part-zone" data-group="ItemFeet" cx="129" cy="498" rx="14" ry="9" data-label="脚"/>' +
-            '<ellipse class="xsact-body-part-zone" data-group="ItemBoots" cx="91" cy="498" rx="16" ry="11" data-label="靴"/>' +
-            '<ellipse class="xsact-body-part-zone" data-group="ItemBoots" cx="129" cy="498" rx="16" ry="11" data-label="靴"/>' +
+
+        // 用 BC 原生 AssetGroup[].Zone 矩形（500x1000 资产空间）逐个部位生成可点击热区。
+        // 矩形本身即身体轮廓，不需要额外人物贴图——这正是 BC 原版「点矩形选部位」的方式。
+        var rects = '';
+        BODY_PARTS.forEach(function(part) {
+            var zones = getPartZones(charObj, part.group);
+            zones.forEach(function(z) {
+                var x = z[0], y = z[1], w = z[2], h = z[3];
+                var rx = Math.min(16, Math.min(w, h) * 0.4);
+                var sel = (state.selectedPart === part.group) ? ' selected' : '';
+                rects += '<rect class="xsact-body-part-zone' + sel + '" data-group="' + part.group +
+                    '" x="' + x.toFixed(1) + '" y="' + y.toFixed(1) + '" width="' + w.toFixed(1) +
+                    '" height="' + h.toFixed(1) + '" rx="' + rx.toFixed(1) + '" data-label="' + part.label + '"/>';
+            });
+        });
+
+        var svg = '<svg class="xsact-body-svg" viewBox="0 0 500 1000" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">' +
+            rects +
             '</svg>' +
             '<div class="xsact-body-part-hint">点击身体部位选择动作</div>';
         bodyEl.innerHTML = '<div class="xsact-body-select">' + svg + '</div>';
+
         var hint = bodyEl.querySelector('.xsact-body-part-hint');
         bodyEl.querySelectorAll('.xsact-body-part-zone').forEach(function(zone) {
             zone.addEventListener('mouseenter', function() {
@@ -1701,6 +1670,10 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             zone.addEventListener('click', function(e) {
                 e.stopPropagation();
                 state.selectedPart = zone.dataset.group;
+                // 立即高亮当前选中的矩形，避免等下次重绘
+                bodyEl.querySelectorAll('.xsact-body-part-zone').forEach(function(z) {
+                    z.classList.toggle('selected', z.dataset.group === state.selectedPart);
+                });
                 renderPanel();
                 // 选择部位后保持浮层开启，方便继续选其他部位
             });
@@ -1765,8 +1738,6 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         else openCharPopover();
     }
 
-    /** 渲染人物部位选择视图 — 使用 SVG 人物剪影 + 线框热区 */
-    /* 人物部位选择已迁移到左侧浮层：renderPopoverParts / renderPopover */
 
     // ════════════════════════════════════════════════════════════════════════
     // 右侧动作面板
@@ -2754,29 +2725,31 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             '  to{opacity:1;transform:translateY(0) scale(1);}',
             '}',
 
-            /* ===== 人物部位选择（人物剪影 + 线框热区）===== */
+            /* ===== 人物部位选择（BC 原生矩形 Zone 地图）===== */
             '.xsact-body-select{',
             '  flex:1;display:flex;flex-direction:column;align-items:stretch;',
             '  min-height:0;padding:6px 4px 0;gap:6px;overflow:hidden;',
             '}',
             '.xsact-body-svg{',
-            '  flex:1;min-height:0;width:auto;max-width:100%;max-height:100%;',
+            '  flex:1;min-height:0;width:100%;height:100%;',
             '  align-self:center;overflow:visible;',
-            '  filter:drop-shadow(0 0 10px rgba(var(--xs-accent-rgb), 0.08));',
+            '  filter:drop-shadow(0 0 10px rgba(var(--xs-accent-rgb), 0.06));',
             '}',
-            '.xsact-body-silhouette ellipse,.xsact-body-silhouette path{',
-            '  fill:rgba(255,255,255,0.08);',
-            '  stroke:rgba(255,255,255,0.20);',
-            '  stroke-width:1;',
-            '}',
+            /* 矩形热区：默认淡描边，hover/selected 点亮，呼应暗色战术面板 */
             '.xsact-body-part-zone{',
-            '  fill:transparent;stroke:rgba(255,255,255,0.08);stroke-width:1;',
+            '  fill:rgba(var(--xs-accent-rgb), 0.08);',
+            '  stroke:rgba(255,255,255,0.32);stroke-width:1.2;',
             '  cursor:pointer;transition:fill .12s,stroke .12s,stroke-width .12s,filter .12s;',
-            '  pointer-events:all;',
+            '  pointer-events:all;vector-effect:non-scaling-stroke;',
             '}',
             '.xsact-body-part-zone:hover,.xsact-body-part-zone.hover{',
-            '  fill:rgba(var(--xs-accent-rgb), 0.18);stroke:#fff;stroke-width:2.5;',
-            '  filter:drop-shadow(0 0 8px rgba(var(--xs-accent-rgb), 0.55));',
+            '  fill:rgba(var(--xs-accent-rgb), 0.26);stroke:#fff;stroke-width:2.5;',
+            '  filter:drop-shadow(0 0 8px rgba(var(--xs-accent-rgb), 0.6));',
+            '}',
+            '.xsact-body-part-zone.selected{',
+            '  fill:rgba(var(--xs-accent-rgb), 0.32);',
+            '  stroke:var(--xs-accent);stroke-width:2.5;',
+            '  filter:drop-shadow(0 0 10px rgba(var(--xs-accent-rgb), 0.55));',
             '}',
             '.xsact-body-part-hint{',
             '  font-size:12px;color:var(--xs-text-dim);text-align:center;',
