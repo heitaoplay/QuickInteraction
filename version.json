@@ -1,20 +1,21 @@
 {
-  "version": "1.0.4",
+  "version": "1.0.5",
   "date": "2026-07-19",
   "severity": "normal",
   "summary": [
-    "v1.0.4：修复第三方 / mod 自定义动作发出后，对方显示 MISSING TEXT IN ActivityDictionary.csv 的问题",
-    "修复：对标准 BC 活动保持原生 Activity 消息；对 mod 自定义动作（名字含下划线或字典缺失）改为 Chat 消息兜底",
-    "修复：兜底消息优先复用原翻译句子并替换 SourceCharacter / TargetCharacter，尽量保持与原生 Activity 一致的阅读体验",
-    "修复：彻底移除对 echo 动作的专属硬编码，统一用「是否标准 BC 活动 / 本地字典是否缺失」判断",
-    "优化：无翻译动作仍显示可读名称，不再向对方展示垃圾串"
+    "v1.0.5：修复 LSCG_、Liko_、小酥(XiaoSu) XSAct_ 等 mod / 第三方自定义动作发出后退化为 Chat/Action 兜底、对方看不到正确动作描述且效果丢失的问题",
+    "修复：LSCG_ 动作改发标准 Activity 包，由 LSCG 脚本正常解析执行（饥饿/口渴/道具/特殊效果）",
+    "修复：Liko_ 动作（如「对朋友的恶作剧」）改发标准 Activity 包，Liko 绑定的脚本效果正常触发",
+    "修复：小酥(XiaoSu) XSAct_ 动作改发标准 Activity 包，装/未装小酥的玩家都能看到正确中文描述",
+    "优化：沿用 ActivityDictionaryText 数组兜底补丁，标准活动字典缺失时自动回退，避免误判 MISSING",
+    "说明：「自定义动作」功能当前为【测试版(Beta)】，仍在开发中，如遇异常欢迎反馈"
   ],
-  "detailsUrl": "https://github.com/heitaoplay/QuickInteraction/releases/tag/v1.0.4",
+  "detailsUrl": "https://github.com/heitaoplay/QuickInteraction/releases/tag/v1.0.5",
   "announcement": {
-    "id": "2026-07-19-missing-label-chat-fallback",
+    "id": "2026-07-19-mod-activity-dispatch-fix",
     "severity": "normal",
-    "title": "v1.0.4 修复：第三方动作乱码",
-    "message": "本次更新修复了 BC 游戏更新后，部分第三方 / mod 自定义动作发到聊天中显示「MISSING TEXT IN ActivityDictionary.csv」的问题。\n\n修复内容：\n· 标准 BC 活动仍走原生 Activity 消息，不变\n· mod 自定义动作（如笨蛋笨Luzi_、LSCG_、Liko_、BCC_、XSAct_ 等带下划线前缀，或本地字典缺失）自动改为 Chat 消息兜底\n· 有翻译时尽量复用原句，保持接近原生的阅读体验\n· 无翻译时显示可读名，避免对方看到垃圾串\n\n建议所有玩家立即更新。",
-    "detailsUrl": "https://github.com/heitaoplay/QuickInteraction/releases/tag/v1.0.4"
+    "title": "v1.0.5 修复：mod 动作描述丢失",
+    "message": "本次更新修复了 LSCG、Liko、小酥(XiaoSu) 等 mod / 第三方自定义动作发出后，对方只看到降级文本、动作效果丢失的问题。\n\n修复内容：\n· LSCG_ 动作改为发送标准 Activity 包，由 LSCG 脚本正常解析并执行（饥饿/口渴/道具/特殊效果）\n· Liko_ 动作（如「对朋友的恶作剧」）发送标准 Activity 包，Liko 绑定的脚本效果正常触发\n· 小酥(XiaoSu) XSAct_ 动作发送标准 Activity 包，无论对方是否安装小酥都能看到正确中文描述\n· 沿用字典数组兜底，标准活动字典缺失时自动回退，避免误判 MISSING\n\n关于「自定义动作」功能：该功能目前处于【测试版(Beta)】阶段，仍在开发中，可能存在不稳定或未完善之处，建议谨慎使用并及时反馈问题。\n\n建议所有玩家更新。",
+    "detailsUrl": "https://github.com/heitaoplay/QuickInteraction/releases/tag/v1.0.5"
   }
 }
