@@ -2,7 +2,7 @@
 // @name         快捷互动 (QuickInteraction)
 // @name:zh      快捷互动
 // @namespace    https://github.com/heitaoplay/QuickInteraction
-// @version      1.0.3
+// @version      1.0.4
 // @description  Bondage Club - 统一动作操作台。一键进入动作模式，在聊天室场景内直接点人物部位选动作，绕过原生5步嵌套菜单。
 // @author       Tao MUSE
 // @homepageURL  https://github.com/heitaoplay/QuickInteraction
@@ -62,7 +62,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         if (!_serverSyncWarned) { _serverSyncWarned = true; toast('设置同步到服务器失败，已保留在本地', '#FF5C5C'); }
     }
 
-    const VERSION = '1.0.3';
+    const VERSION = '1.0.4';
 
     // ── 存储键 ──
     const S_ENABLED = 'xsact_qa_enabled';
@@ -596,8 +596,46 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
     function makeActivityPacket(targetChar, group, name, activityItem) {
         var targetMN = targetChar && targetChar.MemberNumber;
         var contentKey = resolveContentKey(group, name, targetChar);
-        var isTargetSelf = contentKey.indexOf('ChatSelf-') === 0 &&
-                           !(Player && targetChar && targetChar.MemberNumber === Player.MemberNumber);
+        var isSelfAction = contentKey.indexOf('ChatSelf-') === 0;
+        var isPlayerTarget = Player && targetChar && targetChar.MemberNumber === Player.MemberNumber;
+        var isTargetSelf = isSelfAction && !isPlayerTarget;
+
+        var contentText = (typeof ActivityDictionaryText === 'function') ? ActivityDictionaryText(contentKey) : null;
+        var contentKeyMissing = isMissingLabel(contentText);
+        // 标准 BC 活动名不含下划线；含下划线通常为 XSAct_/LSCG_/Liko_/BCC_/笨蛋笨Luzi_ 等
+        // mod 自定义动作。这些动作的字典/活动定义可能未在接收方安装，发标准 Activity
+        // 会导致对方显示 MISSING TEXT。统一改为 Chat 兜底，保证可读。
+        var isModLike = /_/.test(name || '');
+
+        if (contentKeyMissing || isModLike) {
+            var srcName = Player && (Player.Name || Player.AccountName || '某人');
+            var tgtName = targetChar && (targetChar.Name || targetChar.AccountName || '某人');
+            var sentence;
+            if (!contentKeyMissing && contentText) {
+                // 有翻译时尽量复用原句，替换占位符后作为 Chat 发送，避免接收方因无
+                // 该动作定义而显示 MISSING TEXT。
+                sentence = contentText
+                    .replace(/SourceCharacter/g, srcName)
+                    .replace(/TargetCharacter/g, tgtName);
+                if (sentence.indexOf('(') !== 0) sentence = '(' + sentence + ')';
+            } else {
+                var displayName = getActivityLabelFallback(name, group) || name || '某个动作';
+                if (isTargetSelf) {
+                    sentence = '(' + tgtName + '做了「' + displayName + '」.)';
+                } else {
+                    sentence = '(' + srcName + '对' + tgtName + '做了「' + displayName + '」.)';
+                }
+            }
+            return {
+                Content: sentence,
+                Type: 'Chat',
+                Dictionary: [
+                    { SourceCharacter: isTargetSelf ? targetMN : (Player.MemberNumber || 0) },
+                    { TargetCharacter: targetMN }
+                ]
+            };
+        }
+
         // PAT All 同款：Dictionary 初始不含 ActivityName（最后 push，顺序敏感！）
         var packet = {
             Content: contentKey,
@@ -722,18 +760,6 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             var focusGroupObj = null;
             if (typeof AssetGroup !== 'undefined' && Array.isArray(AssetGroup)) {
                 focusGroupObj = AssetGroup.find(function(g) { return g && g.Name === group; });
-            }
-            // ── echo 自定义动作跨客户端兜底（对齐 BC 原生 ActivityRun）──
-            // echo-activity-ext 用 @sugarch/bc-activity-manager 注册动作；该库在 ActivityRun
-            // 调用栈内发消息时，会往 Dictionary 注入 "MISSING ACTIVITY DESCRIPTION FOR KEYWORD <Content>"
-            // 文本，使未装插件/无该动作定义的客户端也能看到正确句子。XSAct 走 ActivityRun(...,false)
-            // + 自发包（不在 ActivityRun 栈内），故此处补上；仅对 echo 动作（笨蛋笨Luzi_ 前缀）生效，
-            // 不影响 XSAct_ / 内置 / 第三方动作等其它模块。中文对话以 UTF-8 JSON 直传，无编码转换。
-            if (name && name.indexOf('笨蛋笨Luzi_') === 0 && typeof ActivityDictionaryText === 'function') {
-                var _echoDlg = ActivityDictionaryText(packet.Content);
-                if (_echoDlg && _echoDlg.indexOf('MISSING') === -1 && _echoDlg.indexOf('[STRING_RETRIEVAL_FAILED]') === -1) {
-                    packet.Dictionary.push({ Tag: 'MISSING ACTIVITY DESCRIPTION FOR KEYWORD ' + packet.Content, Text: _echoDlg });
-                }
             }
             try {
                 charObj.FocusGroup = focusGroupObj || { Name: group };

@@ -1,19 +1,20 @@
 {
-  "version": "1.0.3",
+  "version": "1.0.4",
   "date": "2026-07-19",
   "severity": "normal",
   "summary": [
-    "v1.0.3：紧急修复 BC 游戏更新后动作列表显示乱码 / 错误文本的问题",
-    "修复：适配 BC 新版「字典缺失」哨兵格式（MISSING TEXT IN \"ActivityDictionary.csv\": Label-...）",
-    "修复：子部位（ItemMouth2 / ItemMouth3 等）重新正确回退到主部位翻译",
-    "优化：无翻译动作显示可读名称，并自动剥离 XSAct_ / LSCG_ / Liko_ / BCC_ 等 mod 前缀"
+    "v1.0.4：修复第三方 / mod 自定义动作发出后，对方显示 MISSING TEXT IN ActivityDictionary.csv 的问题",
+    "修复：对标准 BC 活动保持原生 Activity 消息；对 mod 自定义动作（名字含下划线或字典缺失）改为 Chat 消息兜底",
+    "修复：兜底消息优先复用原翻译句子并替换 SourceCharacter / TargetCharacter，尽量保持与原生 Activity 一致的阅读体验",
+    "修复：彻底移除对 echo 动作的专属硬编码，统一用「是否标准 BC 活动 / 本地字典是否缺失」判断",
+    "优化：无翻译动作仍显示可读名称，不再向对方展示垃圾串"
   ],
-  "detailsUrl": "https://github.com/heitaoplay/QuickInteraction/releases/tag/v1.0.3",
+  "detailsUrl": "https://github.com/heitaoplay/QuickInteraction/releases/tag/v1.0.4",
   "announcement": {
-    "id": "2026-07-19-missing-label-hotfix",
+    "id": "2026-07-19-missing-label-chat-fallback",
     "severity": "normal",
-    "title": "v1.0.3 紧急修复：动作列表乱码",
-    "message": "本次更新修复了 BC 游戏今日更新后，快捷互动动作列表出现「MISSING TEXT IN ActivityDictionary.csv」错误文本的问题。\n\n修复内容：\n· 适配 BC 新版字典缺失哨兵格式\n· 子部位（口2 / 口3 等）正确回退到主部位翻译\n· 无翻译动作显示可读名，不再展示垃圾串\n\n建议所有玩家立即更新。",
-    "detailsUrl": "https://github.com/heitaoplay/QuickInteraction/releases/tag/v1.0.3"
+    "title": "v1.0.4 修复：第三方动作乱码",
+    "message": "本次更新修复了 BC 游戏更新后，部分第三方 / mod 自定义动作发到聊天中显示「MISSING TEXT IN ActivityDictionary.csv」的问题。\n\n修复内容：\n· 标准 BC 活动仍走原生 Activity 消息，不变\n· mod 自定义动作（如笨蛋笨Luzi_、LSCG_、Liko_、BCC_、XSAct_ 等带下划线前缀，或本地字典缺失）自动改为 Chat 消息兜底\n· 有翻译时尽量复用原句，保持接近原生的阅读体验\n· 无翻译时显示可读名，避免对方看到垃圾串\n\n建议所有玩家立即更新。",
+    "detailsUrl": "https://github.com/heitaoplay/QuickInteraction/releases/tag/v1.0.4"
   }
 }
