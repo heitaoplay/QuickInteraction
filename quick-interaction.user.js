@@ -1536,10 +1536,6 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                 saveCustomActions();
                 caRegister(a); // 隐藏时卸载，显示时注册
                 updateCustomActionPanel(charObj);
-                // 如果右侧动作面板正开着，立即刷新，避免隐藏的自定义动作仍残留在按钮列表中
-                if (state.selectedTarget && state.selectedPart) {
-                    try { updateActionPanel(state.selectedTarget, state.selectedPart); } catch (e) { console.warn('[XSAct-QA] 隐藏/显示后刷新动作面板失败:', e.message); }
-                }
                 toast(a.visible ? '已显示「' + a.name + '」' : '已隐藏「' + a.name + '」', a.visible ? '#46E0A0' : '#888');
             });
         });
@@ -1890,9 +1886,9 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                 caSuppressEchoName(rawName);
                 imported++;
             });
-            // 导入完成后，立即屏蔽 echo 端已存在的同名原始动作，并刷新动作面板
+            // 导入完成后，立即屏蔽 echo 端已存在的同名原始动作，并刷新当前面板（custom 面板）
             caRemoveSuppressedEchoActivities();
-            updateActionPanel(state.selectedTarget, state.selectedPart);
+            updateCustomActionPanel(state.selectedTarget);
             toast('已从 echo/回声 导入 ' + imported + ' 个动作', '#46E0A0');
         } catch (e) {
             console.warn('[XSAct-QA] 导入 echo/回声 动作失败:', e.message);
@@ -2012,7 +2008,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             } else if (star) {
                 star.remove();
             }
-        } else if (state.selectedTarget && state.selectedPart) {
+        } else if (state.selectedTarget && state.selectedPart && state.panelMode === 'part') {
             updateActionPanel(state.selectedTarget, state.selectedPart);
         }
     }
@@ -2887,7 +2883,10 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
     /** 刷新面板状态（用于刷新按钮）：重新读取当前部位/人物的可执行动作或组合列表 */
     function refreshPanelState() {
         if (!state.actionPanelEl || !state.selectedTarget) { toast('请先选择一个人物部位', '#888'); return; }
-        if (state.panelMode === 'combo') {
+        if (state.panelMode === 'custom') {
+            updateCustomActionPanel(state.selectedTarget);
+            toast('我的动作列表已刷新', '#FF5C7A');
+        } else if (state.panelMode === 'combo') {
             // 重新从存储加载组合，并刷新视图
             state.combos = loadSetting(S_COMBOS, []);
             updateComboPanel(state.selectedTarget);
@@ -3088,6 +3087,8 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
 
     function updateActionPanel(charObj, partGroup) {
         try {
+            // 该函数只应在「单部位」动作面板模式下渲染；若当前处于 custom/combo，避免覆盖界面。
+            if (state.panelMode !== 'part') return;
             // 用模块持有的面板引用查询，避免重复注入时 getElementById 命中隐藏旧面板
             if (!state.actionPanelEl) return;
             var titleEl = state.actionPanelEl.querySelector('#xsact-panel-title');
