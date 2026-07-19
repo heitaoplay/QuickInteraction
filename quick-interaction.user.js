@@ -2,7 +2,7 @@
 // @name         快捷互动 (QuickInteraction)
 // @name:zh      快捷互动
 // @namespace    https://github.com/heitaoplay/QuickInteraction
-// @version      1.0.6
+// @version      1.0.7
 // @description  Bondage Club - 统一动作操作台。一键进入动作模式，在聊天室场景内直接点人物部位选动作，绕过原生5步嵌套菜单。
 // @author       Tao MUSE
 // @homepageURL  https://github.com/heitaoplay/QuickInteraction
@@ -62,7 +62,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         if (!_serverSyncWarned) { _serverSyncWarned = true; toast('设置同步到服务器失败，已保留在本地', '#FF5C5C'); }
     }
 
-    const VERSION = '1.0.6';
+    const VERSION = '1.0.7';
 
     // ── 存储键 ──
     const S_ENABLED = 'xsact_qa_enabled';
@@ -99,6 +99,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         editingComboId: null,         // 正在编辑的组合 id
         customActions: [],            // 自定义动作（XSAct 自包含版，替代 echo/回声）
         echoSuppressed: new Set(),    // 已导入的 echo 原始动作名（屏蔽用）
+        echoPrefixes: new Set(),     // 已导入 echo 动作的中文显示前缀（安全前缀兜底，仅匹配 echo 命名空间，不误伤 BC 原生动作）
         editingCustomId: null,        // 正在编辑的自定义动作 id
         favorites: [],                // 收藏复合键数组：格式 "部位Group|动作名"（如 "ItemMouth|Caress"）
         presets: [],                  // 预留预设
@@ -423,6 +424,9 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                                       a.translatedName.indexOf('MISSING TEXT IN') !== -1 ||
                                       a.translatedName.indexOf('MISSING ACTIVITY') !== -1))) return false;
             if (!shouldKeepAction(a.Name, partGroup)) return false;
+            // 屏蔽已导入的 echo 原始动作名（双重兜底：ActivityAllowedForGroup hook 已过滤，
+            // 但 fallback 数据源和旧数据可能绕过 hook，这里再强制过滤一次）
+            if (state.echoSuppressed && caIsEchoSuppressed(a.Name)) return false;
             // 自定义动作：仅保留标记为可见的
             if (a.Name.indexOf(CA_PREFIX) === 0) {
                 var ca = caFindByActivityName(a.Name);
@@ -937,7 +941,11 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             }
             try {
                 charObj.FocusGroup = focusGroupObj || { Name: group };
-                ServerSend('ChatRoomChat', packet);
+                if (typeof ServerSend === 'function') {
+                    ServerSend('ChatRoomChat', packet);
+                } else {
+                    console.warn('[XSAct-QA] ServerSend 暂不可用，动作未实际发送');
+                }
                 recordLastAction(name, charObj.MemberNumber, group, packet.Dictionary);
                 return true;
             } catch (sendErr) {
@@ -1104,9 +1112,11 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         var isOtherOnly = act.scope === 'other';
         // 与 BC 原生 Activity 对象格式保持一致，避免第三方插件（PAT All / echo等）
         // 在处理时读到未定义字段而崩溃。
+        // ActivityID 使用正数（避免某些 BC 路径把 -1 当无效处理），基于 hash 保证唯一。
+        var actId = (parseInt(caHash(actName), 36) % 900000000) + 100000000;
         return {
             Name: actName,
-            ActivityID: -1,
+            ActivityID: actId,
             MaxProgress: 0,
             Prerequisite: [],
             Target: isSelfOnly ? [] : [act.group],
@@ -1156,6 +1166,26 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             if (caActivityName(state.customActions[i]) === name) return state.customActions[i];
         }
         return null;
+    }
+    /**
+     * 自动检测动作来源（用于动作列表的来源水印标注 + LSCG/Liko 点击后自动刷新）。
+     * 返回：'LSCG' | 'LIKO' | 'XIAOSU' | 'ECHO' | 'CUSTOM' | null（null = BC 原版，不标注）。
+     * 检测顺序很重要：XSQAct_ 是我们自定义动作前缀，必须先于 XSAct_ 判断，
+     * 否则会被第三方 mod 小酥（XiaoSuActivity，前缀 XSAct_）抢匹配。
+     */
+    function caDetectSource(name) {
+        if (!name || typeof name !== 'string') return null;
+        if (name.indexOf('LSCG_') === 0) return 'LSCG';
+        if (name.indexOf('Liko_') === 0) return 'LIKO';
+        if (name.indexOf(CA_PREFIX) === 0) {            // XSQAct_ 本插件自定义动作
+            var ca = caFindByActivityName(name);
+            if (ca && ca.source === 'echo') return 'ECHO';
+            return 'CUSTOM';                            // 用户自建
+        }
+        if (name.indexOf('XSAct_') === 0) return 'XIAOSU'; // 小酥动作拓展
+        // 兜底：仍出现在列表里的 echo 原始动作名（理论上已被屏蔽，但防漏）
+        if (state.echoSuppressed && state.echoSuppressed.has(name)) return 'ECHO';
+        return null;                                    // BC 原版自带动作
     }
     function loadCustomActions() {
         state.customActions = loadSetting(S_CUSTOM, []);
@@ -1232,12 +1262,16 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         // 以持久化的屏蔽集合为基础，同步当前所有 source==='echo' 的自定义动作名，
         // 并扫描 BC 注册表 / echo 原始数据把真实 echo 原始 Activity 名（如 笨蛋笨Luzi_xw58d）一起加进屏蔽。
         loadEchoSuppressed();
+        state.echoPrefixes = new Set();   // 重建：仅保留已导入 echo 动作的中文前缀集合
         var echoData = caGetEchoData();
         state.customActions.forEach(function(a) {
             if (!a || a.source !== 'echo' || !a.name) return;
             // 1. 直接用导入时记录的原始名
             if (a.echoName && typeof a.echoName === 'string') state.echoSuppressed.add(a.echoName);
             if (Array.isArray(a.echoNames)) a.echoNames.forEach(function(n) { if (n) state.echoSuppressed.add(n); });
+            // 收集中文显示前缀（安全前缀兜底用，只匹配 echo 命名空间，不误伤 BC 原生动作）
+            var _p1 = caExtractChinesePrefix(a.name); if (_p1) state.echoPrefixes.add(_p1);
+            var _p2 = caExtractChinesePrefix(a.echoName); if (_p2) state.echoPrefixes.add(_p2);
             // 2. 从 echo 数据中查找对应条目，把 key / item.Name 都加入屏蔽
             if (echoData) {
                 var entry = caFindEchoEntry(echoData, a.name);
@@ -1250,7 +1284,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                     state.echoSuppressed.add(resolved.rawName);
                     // 扫描注册表，把真实 Activity Name 也加进来
                     var found = caFindEchoNamesInRegistry(entry.item, entry.key, a.group);
-                    found.forEach(function(n) { state.echoSuppressed.add(n); });
+                    found.forEach(function(n) { state.echoSuppressed.add(n); var _fp = caExtractChinesePrefix(n); if (_fp) state.echoPrefixes.add(_fp); });
                 }
             }
             // 3. 兜底：用中文名扫描注册表
@@ -1265,7 +1299,25 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         saveEchoSuppressed();
     }
     function caIsEchoSuppressed(name) {
-        return !!name && state.echoSuppressed.has(name);
+        if (!name) return false;
+        var n = String(name);
+        // 1) 精确匹配：导入时记录的原始名 + 注册表扫描到的精确变体（如 笨蛋笨Luzi_uc09b0）
+        if (state.echoSuppressed.has(n)) return true;
+        // 2) 安全的中文前缀兜底：仅当 name 的中文前缀以“已导入 echo 动作的中文显示名前缀”开头，
+        //    且该 name 不是本插件自定义动作（XSQAct_）时，才视为 echo 原始变体需屏蔽。
+        //    关键：BC 原生动作 Name 通常为英文，caExtractChinesePrefix 返回空，不会被误伤；
+        //    前缀集合只来自用户真正导入的 echo 动作，因此不会扩大化删除正常动作。
+        if (state.echoPrefixes && state.echoPrefixes.size) {
+            var cp = caExtractChinesePrefix(n);
+            if (cp && n.indexOf(CA_PREFIX) !== 0) {
+                var it = state.echoPrefixes.values();
+                for (var v = it.next(); !v.done; v = it.next()) {
+                    var p = v.value;
+                    if (p && cp.indexOf(p) === 0) return true;
+                }
+            }
+        }
+        return false;
     }
     /** 判断字符串是否包含中文 */
     function caIsChinese(s) { return typeof s === 'string' && /[\u4e00-\u9fa5]/.test(s); }
@@ -1319,6 +1371,16 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         var m = String(s).match(/^[\u4e00-\u9fa5]+/);
         return m ? m[0] : '';
     }
+    /** 辅助：把 Target / TargetSelf 统一归一化为数组（兼容 echo 注册时使用的字符串形式） */
+    function caActivityTargets(a) {
+        var t = [];
+        if (Array.isArray(a.Target)) t = t.concat(a.Target);
+        else if (a.Target) t.push(a.Target);
+        if (Array.isArray(a.TargetSelf)) t = t.concat(a.TargetSelf);
+        else if (a.TargetSelf) t.push(a.TargetSelf);
+        return t;
+    }
+
     /** 根据导入的 echo 数据，在 BC 全局 Activity 注册表中找出应被屏蔽的原始 Activity 真实名字。
      *  echo 存储的 item.Name 可能是中文显示名（如「笨蛋笨」），而实际注册名会带随机后缀
      *  （如「笨蛋笨Luzi_xw58d」），直接按 item.Name 匹配会漏网，导致面板仍显示原始 ID。
@@ -1349,40 +1411,20 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                     if (a.Name.indexOf(ourPrefix) === 0) return;
                     if (a.Name.indexOf(prefix) !== 0) return;
                     // 同部位校验：group 一致或该项注册时未指定部位则放行
-                    var inGroup = false;
-                    if (!group) { inGroup = true; }
-                    else {
-                        if (Array.isArray(a.Target) && a.Target.indexOf(group) !== -1) inGroup = true;
-                        if (Array.isArray(a.TargetSelf) && a.TargetSelf.indexOf(group) !== -1) inGroup = true;
-                    }
-                    if (inGroup) names.add(a.Name);
+                    if (group && caActivityTargets(a).indexOf(group) === -1) return;
+                    names.add(a.Name);
                 });
             });
         } catch (e) { console.warn('[XSAct-QA] 扫描 echo 原始动作名失败:', e.message); }
         return names;
     }
     function caRemoveSuppressedEchoActivities() {
-        // 从 BC 全局 Activity 数组和排序索引中移除被屏蔽的 echo 原始动作名
-        try {
-            var fam = (Player && Player.AssetFamily) || 'Female3DCG';
-            var acts = AssetAllActivities(fam);
-            if (Array.isArray(acts)) {
-                for (var i = acts.length - 1; i >= 0; i--) {
-                    var a = acts[i];
-                    if (a && a.Name && caIsEchoSuppressed(a.Name) && a.Name.indexOf(CA_PREFIX) !== 0) {
-                        acts.splice(i, 1);
-                    }
-                }
-            }
-            if (Array.isArray(ActivityFemale3DCGOrdering)) {
-                for (var j = ActivityFemale3DCGOrdering.length - 1; j >= 0; j--) {
-                    var nm = ActivityFemale3DCGOrdering[j];
-                    if (nm && caIsEchoSuppressed(nm) && nm.indexOf(CA_PREFIX) !== 0) {
-                        ActivityFemale3DCGOrdering.splice(j, 1);
-                    }
-                }
-            }
-        } catch (e) { console.warn('[XSAct-QA] 清理 echo 重复动作失败:', e.message); }
+        // 重要：不再物理改写 BC 全局活动数组（AssetAllActivities / ActivityFemale3DCGOrdering）。
+        // 旧实现用前缀匹配直接 splice 全局数组，前缀一旦过宽会把大量正常动作从 BC 注册表删除，
+        // 导致 BC 原生动作菜单与插件面板“动作显示混乱”。
+        // 屏蔽改为纯内存过滤：ActivityAllowedForGroup hook（L4264）+ getActionsForPart（L428）
+        // 双重兜底，不触碰全局状态，安全且无副作用。此处保留空函数以兼容既有调用点。
+        return;
     }
     function caNewId() { return 'ca_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 7); }
 
@@ -1494,6 +1536,10 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                 saveCustomActions();
                 caRegister(a); // 隐藏时卸载，显示时注册
                 updateCustomActionPanel(charObj);
+                // 如果右侧动作面板正开着，立即刷新，避免隐藏的自定义动作仍残留在按钮列表中
+                if (state.selectedTarget && state.selectedPart) {
+                    try { updateActionPanel(state.selectedTarget, state.selectedPart); } catch (e) { console.warn('[XSAct-QA] 隐藏/显示后刷新动作面板失败:', e.message); }
+                }
                 toast(a.visible ? '已显示「' + a.name + '」' : '已隐藏「' + a.name + '」', a.visible ? '#46E0A0' : '#888');
             });
         });
@@ -1805,21 +1851,41 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                 if (caLooksLikeRawActivityName(rawName)) foundRawNames.add(rawName);
                 if (caLooksLikeRawActivityName(k) && k !== rawName) foundRawNames.add(k);
                 var primaryEchoName = foundRawNames.values().next().value || rawName;
-                var ca = {
-                    id: caNewId(),
-                    name: displayName,
-                    scope: scope,
-                    group: group,
-                    dialog: normalizeEchoPlaceholder(dialog),
-                    dialogSelf: normalizeEchoPlaceholder(dialogSelf),
-                    createdAt: Date.now(),
-                    source: 'echo',
-                    visible: true,
-                    echoName: primaryEchoName, // 记录真实 echo 注册名，用于后续启动时重新屏蔽
-                    echoNames: Array.from(foundRawNames) // 记录所有可能的原始名，防止漏网
-                };
-                upsertCustom(ca);
+
+                // 去重：同名同部位已存在则更新，避免重复导入导致屏蔽集合/注册表混乱
+                var existing = state.customActions.find(function(a) { return a.name === displayName && a.group === group; });
+                if (existing) {
+                    caUnregister(existing);
+                    existing.scope = scope;
+                    existing.dialog = normalizeEchoPlaceholder(dialog);
+                    existing.dialogSelf = normalizeEchoPlaceholder(dialogSelf);
+                    existing.source = 'echo';
+                    existing.echoName = primaryEchoName;
+                    existing.echoNames = Array.from(foundRawNames);
+                    if (typeof existing.visible !== 'boolean') existing.visible = true;
+                    upsertCustom(existing);
+                } else {
+                    var ca = {
+                        id: caNewId(),
+                        name: displayName,
+                        scope: scope,
+                        group: group,
+                        dialog: normalizeEchoPlaceholder(dialog),
+                        dialogSelf: normalizeEchoPlaceholder(dialogSelf),
+                        createdAt: Date.now(),
+                        source: 'echo',
+                        visible: true,
+                        echoName: primaryEchoName, // 记录真实 echo 注册名，用于后续启动时重新屏蔽
+                        echoNames: Array.from(foundRawNames) // 记录所有可能的原始名，防止漏网
+                    };
+                    upsertCustom(ca);
+                }
                 foundRawNames.forEach(caSuppressEchoName);
+                // 把 rawName 的中文前缀也加入屏蔽，防止 echo 动态注册同一中文名的其他变体
+                var rawPrefix = caExtractChinesePrefix(rawName);
+                if (rawPrefix) caSuppressEchoName(rawPrefix);
+                var displayPrefix = caExtractChinesePrefix(displayName);
+                if (displayPrefix) caSuppressEchoName(displayPrefix);
                 caSuppressEchoName(displayName);
                 caSuppressEchoName(rawName);
                 imported++;
@@ -3051,6 +3117,8 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                 if (!act || !act.Name) return;
                 var lbl = getActivityLabel(act.Name, partGroup);
                 var isFav = state.favorites.indexOf(partGroup + '|' + act.Name) !== -1;
+                // 来源水印功能已暂停（按需求优先修复动作显示功能）。
+                // 下方点击处理器仍用 caDetectSource 判断 LSCG/Liko 以触发自动刷新。
                 html += '<div class="xsact-action-row' + (isEditing ? ' editing' : '') + '" data-name="' + escapeHtml(act.Name) + '">' +
                     '<button class="xsact-action-btn' + (isFav ? ' fav' : '') + '" data-name="' + escapeHtml(act.Name) + '" title="' + escapeHtml(act.Name) + '">' +
                     '<span class="xsact-action-label">' + escapeHtml(lbl) + '</span>' +
@@ -3080,7 +3148,17 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                     }
 
                     if (state.allModeActive) executeActionAll();
-                    else { executeAction(charObj, actName, act.Item || null); toast('已执行：' + getActivityLabel(actName, partGroup), '#46E0A0'); }
+                    else {
+                        var execOk = executeAction(charObj, actName, act.Item || null);
+                        var srcKey = caDetectSource(actName);
+                        // 来源为 LSCG / Liko 的动作会改变可用状态/进度（如进食进度、道具附加），
+                        // 执行后立即静默刷新当前部位动作列表以反映最新状态，且不弹任何提示。
+                        if (srcKey === 'LSCG' || srcKey === 'LIKO') {
+                            setTimeout(function() { try { updateActionPanel(charObj, partGroup); } catch (_) {} }, 50);
+                        } else if (execOk !== false) {
+                            toast('已执行：' + getActivityLabel(actName, partGroup), '#46E0A0');
+                        }
+                    }
                 });
             });
 
@@ -3542,6 +3620,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
 
             /* 动作按钮 */
             '.xsact-action-btn{',
+            '  position:relative;overflow:hidden;',
             '  display:flex;align-items:center;gap:8px;',
             '  width:100%;padding:10px 11px;',
             '  background:var(--xs-panel-bg-2);border:1px solid var(--xs-border);',
@@ -3562,8 +3641,8 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             '.xsact-action-btn.fav:hover{',
             '  background:rgba(232,179,57,0.20);border-color:rgba(232,179,57,0.75);color:#fff;',
             '}',
-            '.xsact-action-label{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
-            '.xsact-action-star{color:#E8B339;display:flex;filter:drop-shadow(0 0 4px rgba(232,179,57,0.7));}',
+            '.xsact-action-label{flex:1;position:relative;z-index:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
+            '.xsact-action-star{color:#E8B339;display:flex;position:relative;z-index:1;filter:drop-shadow(0 0 4px rgba(232,179,57,0.7));}',
 
             /* 动作行 + 加入组合按钮 */
             '.xsact-action-row{',
@@ -4140,7 +4219,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                 var result = next(args);
                 if (!state.echoSuppressed || state.echoSuppressed.size === 0 || !Array.isArray(result)) return result;
                 return result.filter(function(item) {
-                    var nm = item && item.Activity && item.Activity.Name;
+                    var nm = (item && item.Activity && item.Activity.Name) || (item && item.Name);
                     return !caIsEchoSuppressed(nm);
                 });
             });
@@ -4436,6 +4515,16 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
     async function main() {
         logD('v' + VERSION + ' 初始化...');
 
+        // 热重注入（CDP 反复注入测试）场景：若上一轮实例仍挂在 window.__XSActQA，
+        // 先卸载其 bcModSdk 注册，避免 "it is already loaded" 导致本次 registerMod 失败、
+        // 进而 setupHooks 拿不到 modApi（降级成空对象）→ 面板/动作列表无法渲染。
+        try {
+            if (window.__XSActQA && window.__XSActQA.state && window.__XSActQA.state.modApi &&
+                typeof window.__XSActQA.state.modApi.unload === 'function') {
+                window.__XSActQA.state.modApi.unload();
+            }
+        } catch (_) { /* 卸载旧实例失败不阻塞本次启动 */ }
+
         // Phase 1: 等 bcModSdk
         await waitFor(function() { return typeof bcModSdk !== 'undefined'; });
 
@@ -4446,7 +4535,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                 fullName: 'Quick Action Launcher',
                 version: VERSION,
                 repository: '统一动作操作台'
-            });
+            }, { allowReplace: true }); // allowReplace：支持 CDP 反复注入测试时干净替换旧实例
             logD('state.modApi 注册完成');
         } catch (regErr) {
             // 已注册过（热重注入场景）：尝试从已有 mods 中取回
@@ -4543,6 +4632,16 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             importFromEcho: importCustomFromEcho,
             rebuildEchoSuppressed: rebuildEchoSuppressed,
             removeSuppressedEchoActivities: caRemoveSuppressedEchoActivities,
+            upsertCustom: upsertCustom,
+            deleteCustom: deleteCustom,
+            caHash: caHash,
+            caActivityName: caActivityName,
+            caFindByActivityName: caFindByActivityName,
+            caBuildActivityDef: caBuildActivityDef,
+            caDetectSource: caDetectSource,
+            updateActionPanel: updateActionPanel,
+            getActionsForPart: getActionsForPart,
+            isEchoSuppressed: caIsEchoSuppressed,
             // ── 主题切换 ──
             toggleTheme: toggleTheme,
             setTheme: function(id) { applyTheme(id); persist(S_THEME, id); return state.theme; },
