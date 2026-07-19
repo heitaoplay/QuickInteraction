@@ -1445,7 +1445,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         }
 
         // ── 列表视图 ──
-        titleEl.textContent = (characterDisplayName(charObj) || '?') + ' → 我的动作（测试版）';
+        titleEl.textContent = (charObj ? characterDisplayName(charObj) + ' → ' : '') + '我的动作（测试版）';
         var acts = state.customActions;
         var html = '';
         html += '<div class="xsact-ca-view">';
@@ -2247,7 +2247,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         }
         // 恢复上次使用的模式（首次无记录则默认「单部位」）
         var savedMode = loadSetting(S_MODE, 'part');
-        if (!/^(part|combo)$/.test(savedMode)) savedMode = 'part';
+        if (!/^(part|combo|custom)$/.test(savedMode)) savedMode = 'part';
         state.panelMode = savedMode;
         state.actionPanelEl.querySelectorAll('.xsact-mode-tab').forEach(function(tab) {
             tab.classList.toggle('active', tab.dataset.mode === state.panelMode);
@@ -2840,31 +2840,36 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
     function renderPanel() {
         if (!state.actionPanelEl) return;
         var listEl = state.actionPanelEl.querySelector('#xsact-action-list');
+        var titleEl = state.actionPanelEl.querySelector('#xsact-panel-title');
         if (listEl) {
             listEl.classList.toggle('xsact-custom-mode', state.panelMode === 'custom');
             listEl.classList.toggle('xsact-combo-mode', state.panelMode === 'combo');
         }
         updateAllButtonVisual();
         updateFavButtonVisual();
-        if (!state.selectedTarget) {
-            var listEl0 = state.actionPanelEl.querySelector('#xsact-action-list');
-            var titleEl0 = state.actionPanelEl.querySelector('#xsact-panel-title');
-            if (titleEl0) titleEl0.textContent = (state.panelMode === 'combo' || state.panelMode === 'custom') ? '选择人物...' : '选择动作...';
-            if (listEl0) listEl0.innerHTML = '<div class="xsact-qa-empty">点击左侧 ◀ 按钮选择人物和部位</div>';
+
+        // 「我的动作」「组合动作」可独立展开，无需先选中人物或身体部位
+        if (state.panelMode === 'custom') {
+            updateCustomActionPanel(state.selectedTarget);   // charObj 可能为 null
             return;
         }
-        if (state.panelMode === 'custom') {
-            updateCustomActionPanel(state.selectedTarget);
-        } else if (state.panelMode === 'combo') {
-            updateComboPanel(state.selectedTarget);
-        } else if (!state.selectedPart) {
-            var listEl1 = state.actionPanelEl.querySelector('#xsact-action-list');
-            var titleEl1 = state.actionPanelEl.querySelector('#xsact-panel-title');
-            if (titleEl1) titleEl1.textContent = (characterDisplayName(state.selectedTarget) || '?') + ' → 选择部位';
-            if (listEl1) listEl1.innerHTML = '<div class="xsact-qa-empty">请在左侧人物浮层选择身体部位</div>';
-        } else {
-            updateActionPanel(state.selectedTarget, state.selectedPart);
+        if (state.panelMode === 'combo') {
+            updateComboPanel(state.selectedTarget);          // charObj 可能为 null
+            return;
         }
+
+        // 「动作」模式：必须先选中人物与身体部位
+        if (!state.selectedTarget) {
+            if (titleEl) titleEl.textContent = '选择动作...';
+            if (listEl) listEl.innerHTML = '<div class="xsact-qa-empty">点击左侧 ◀ 按钮选择人物和部位</div>';
+            return;
+        }
+        if (!state.selectedPart) {
+            if (titleEl) titleEl.textContent = (characterDisplayName(state.selectedTarget) || '?') + ' → 选择部位';
+            if (listEl) listEl.innerHTML = '<div class="xsact-qa-empty">请在左侧人物浮层选择身体部位</div>';
+            return;
+        }
+        updateActionPanel(state.selectedTarget, state.selectedPart);
     }
 
     /** 切换面板模式（部位 / 自定义组合） */
@@ -2882,7 +2887,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
 
     /** 刷新面板状态（用于刷新按钮）：重新读取当前部位/人物的可执行动作或组合列表 */
     function refreshPanelState() {
-        if (!state.actionPanelEl || !state.selectedTarget) { toast('请先选择一个人物部位', '#888'); return; }
+        if (!state.actionPanelEl) { toast('请先开启动作模式', '#888'); return; }
         if (state.panelMode === 'custom') {
             updateCustomActionPanel(state.selectedTarget);
             toast('我的动作列表已刷新', '#FF5C7A');
@@ -2892,6 +2897,8 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             updateComboPanel(state.selectedTarget);
             toast('组合列表已刷新', '#FF5C7A');
         } else {
+            // 「动作」模式才需要选中人物 + 部位
+            if (!state.selectedTarget || !state.selectedPart) { toast('请先选择一个人物部位', '#888'); return; }
             // 重新渲染当前部位动作列表（ActivityAllowedForGroup 会实时重新计算）
             updateActionPanel(state.selectedTarget, state.selectedPart);
             toast('动作列表已刷新', '#FF5C7A');
@@ -2988,7 +2995,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         }
 
         // ── 列表视图 ──
-        titleEl.textContent = (characterDisplayName(charObj) || '?') + ' → 组合动作';
+        titleEl.textContent = (charObj ? characterDisplayName(charObj) + ' → ' : '') + '组合动作';
         if (allBtn) allBtn.disabled = false;
 
         var html = '';
@@ -3018,8 +3025,9 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                 var id = btn.closest('.xsact-combo-card').dataset.id;
                 var c = getCombo(id);
                 if (!c || !c.items.length) return;
-                if (state.allModeActive) runComboAll(c);
-                else runComboOnTarget(charObj, c);
+                if (state.allModeActive) { runComboAll(c); return; }
+                if (!charObj) { toast('请先在左侧选择人物', '#FF5C5C'); return; }
+                runComboOnTarget(charObj, c);
             });
         });
         listEl.querySelectorAll('.xsact-combo-edit').forEach(function(btn) {
