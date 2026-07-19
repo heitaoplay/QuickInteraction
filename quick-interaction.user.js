@@ -391,7 +391,9 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         var seen = {};
         return actions.filter(function(a) {
             if (!a.Name || a.Name.indexOf('MISSING') !== -1 ||
-                (a.translatedName && a.translatedName.indexOf('[STRING_RETRIEVAL_FAILED]') !== -1)) return false;
+                (a.translatedName && (a.translatedName.indexOf('[STRING_RETRIEVAL_FAILED]') !== -1 ||
+                                      a.translatedName.indexOf('MISSING TEXT IN') !== -1 ||
+                                      a.translatedName.indexOf('MISSING ACTIVITY') !== -1))) return false;
             if (!shouldKeepAction(a.Name, partGroup)) return false;
             if (seen[a.Name]) return false;
             seen[a.Name] = true;
@@ -409,6 +411,19 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
 
     /** 回退翻译：BC Dictionary 查询或去前缀；同时查 Label-ChatOther 与 Label-ChatSelf
      *  （很多"自我动作"如呻吟/呜咽只有 ChatSelf 标签，不能误删）。 */
+    /** BC 字典缺失哨兵检测（覆盖多版本格式）：
+     *  - [STRING_RETRIEVAL_FAILED]（旧）
+     *  - MISSING ACTIVITY ...（旧）
+     *  - MISSING TEXT IN "ActivityDictionary.csv": Label-...（BC 更新后新格式，2026-07 起）
+     *  一旦命中即视为「无翻译」，必须回退或丢弃，绝不能当正常文本显示成动作名。 */
+    function isMissingLabel(t) {
+        if (!t || typeof t !== 'string') return true;
+        if (t.indexOf('[STRING_RETRIEVAL_FAILED]') !== -1) return true;
+        if (t.indexOf('MISSING ACTIVITY') !== -1) return true;
+        if (t.indexOf('MISSING TEXT IN') !== -1) return true;
+        return false;
+    }
+
     function getActivityLabelFallback(name, targetGroup) {
         if (!name) return '';
         if (typeof window.ActivityDictionaryText !== 'function') {
@@ -418,8 +433,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         function tryKey(g, prefix) {
             var k = 'Label-' + prefix + '-' + g + '-' + name;
             var t = window.ActivityDictionaryText(k);
-            if (t && t.indexOf('[STRING_RETRIEVAL_FAILED]') === -1 &&
-                t.indexOf('MISSING ACTIVITY') === -1) return t;
+            if (!isMissingLabel(t)) return t;
             return null;
         }
         function tryGroup(g) {
@@ -427,12 +441,15 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         }
         var result = tryGroup(targetGroup || '');
         if (result) return result;
-        // 合成子部位 fallback 到主部位字典键
+        // 合成子部位 fallback 到主部位字典键（BC 仅在主部位注册翻译）
         if (targetGroup && SUBPART_TO_BASE[targetGroup]) {
             result = tryGroup(SUBPART_TO_BASE[targetGroup]);
             if (result) return result;
         }
+        // 全部查不到：返回「可读名」而非哨兵串。剥离已知 mod 前缀让列表更干净。
         if (name.indexOf('XSAct_') === 0) return name.substring(6);
+        var m = /^([A-Za-z]{2,12})_/.exec(name);
+        if (m) return name.substring(m[0].length);
         return name;
     }
 
@@ -444,7 +461,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         function keyOk(g, prefix) {
             var k = 'Label-' + prefix + '-' + g + '-' + name;
             var t = window.ActivityDictionaryText(k);
-            return t && t.indexOf('[STRING_RETRIEVAL_FAILED]') === -1 && t.indexOf('MISSING ACTIVITY') === -1;
+            return !isMissingLabel(t);
         }
         function groupKeyOk(g) {
             return keyOk(g, 'ChatOther') || keyOk(g, 'ChatSelf');
@@ -464,10 +481,13 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
      */
     function shouldKeepAction(name, targetGroup) {
         if (!name) return false;
+        // 仅丢弃名字本身就是哨兵/乱码的动作；其余一律保留
+        // （getActivityLabelFallback 已保证显示名干净可读，不丢功能）
         if (name.indexOf('MISSING') !== -1) return false;
         if (name.indexOf('[STRING_RETRIEVAL_FAILED]') !== -1) return false;
         if (/[一-鿿]/.test(name) || name.indexOf('XSAct_') === 0) return true;
-        return hasActivityLabel(name, targetGroup);
+        // 英文 / mod 动作：无论是否有 BC 翻译都保留（无翻译时显示可读名，不丢功能）
+        return true;
     }
 
     /** 获取房间内其他角色列表 */
@@ -550,7 +570,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             for (var i = 0; i < order.length; i++) {
                 var k = prefix + '-' + order[i] + '-' + name;
                 var t = ActivityDictionaryText(k);
-                if (t && t.indexOf('MISSING') === -1 && t.indexOf('[STRING_RETRIEVAL_FAILED]') === -1) return k;
+                if (!isMissingLabel(t)) return k;
             }
             return null;
         }
