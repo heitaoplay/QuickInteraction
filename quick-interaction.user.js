@@ -2,7 +2,7 @@
 // @name         快捷互动 (QuickInteraction)
 // @name:zh      快捷互动
 // @namespace    https://github.com/heitaoplay/QuickInteraction
-// @version      1.0.7
+// @version      1.0.8
 // @description  Bondage Club - 统一动作操作台。一键进入动作模式，在聊天室场景内直接点人物部位选动作，绕过原生5步嵌套菜单。
 // @author       Tao MUSE
 // @homepageURL  https://github.com/heitaoplay/QuickInteraction
@@ -62,7 +62,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         if (!_serverSyncWarned) { _serverSyncWarned = true; toast('设置同步到服务器失败，已保留在本地', '#FF5C5C'); }
     }
 
-    const VERSION = '1.0.7';
+    const VERSION = '1.0.8';
 
     // ── 存储键 ──
     const S_ENABLED = 'xsact_qa_enabled';
@@ -755,6 +755,10 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
 
         var contentText = (typeof ActivityDictionaryText === 'function') ? ActivityDictionaryText(contentKey) : null;
         var contentKeyMissing = isMissingLabel(contentText);
+        // 已导入本插件的 echo/回声 原始动作（如 XSAct_埋怀里）被 suppress 后，仍可能出现在
+        // BC 原生动作列表或某些第三方面板。若用户点击了它，不能发标准 Activity 包，否则
+        // 接收方没有 echo 插件就会看到 MISSING TEXT。这里把它视为「需要兜底」。
+        var isEchoSuppressed = typeof caIsEchoSuppressed === 'function' && caIsEchoSuppressed(name);
         // 关键：不要把所有含下划线的 mod 动作都强制走 Action 兜底。
         // 像 Liko_ 这类动作在本地有完整 Activity + Dictionary 注册，且依赖标准 Activity 包触发
         // 其 ServerSend hook 才能执行脚本（如插呆毛、溶解衣服）。若发 Action 包，Liko hook 监听
@@ -773,12 +777,13 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         // 从而被误判 contentKeyMissing 退回 Action 兜底 —— 这正是效果丢失的根因。
         // patchActivityDictionaryText()（main 登录后安装，数组兜底）已让 ActivityDictionaryText
         // 在 MISSING 时回退数组查找，使 contentKeyMissing 对 XSAct_ 也变 false；
-        // 这里再对 XSAct_（排除本插件自定义动作 XSQAct_）强制走标准 Activity 包，双保险，
-        // 与它们在真实游戏里原生触发完全一致。findAllowedActivity 已兜底兜住
-        // 「活动不在 AssetAllActivities」的非法情况，不会发出无效包。
-        var isForcedActivityMod = /^(LSCG_|Liko_|XSAct_)/.test(name || '');
+        // 这里再对 XSAct_（排除本插件自定义动作 XSQAct_ 和已 suppress 的 echo 原始动作）
+        // 强制走标准 Activity 包，双保险，与它们在真实游戏里原生触发完全一致。
+        // findAllowedActivity 已兜底兜住「活动不在 AssetAllActivities」的非法情况，不会发出无效包。
+        var isForcedActivityMod = /^(LSCG_|Liko_)/.test(name || '') ||
+            (/^XSAct_/.test(name || '') && !isEchoSuppressed);
 
-        if (contentKeyMissing && !isForcedActivityMod) {
+        if ((contentKeyMissing || isEchoSuppressed) && !isForcedActivityMod) {
             // 走 BC 原生「自定义动作文本」机制（与游戏内 `.a ` 前缀 / BCX 同款）：
             // 发送 Type:'Action' + 在 Dictionary 中塞一条
             //   { Tag: 'MISSING TEXT IN "<file>": <key>', Text: <动作句> }
@@ -792,6 +797,9 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             var sentence;
             if (!contentKeyMissing && contentText) {
                 sentence = contentText
+                    .replace(/\{SourceCharacter\}/g, actorTag.Tag.Nickname)
+                    .replace(/\{TargetCharacter\}/g, targetChar && (targetChar.Nickname || targetChar.Name || targetChar.AccountName) || '某人')
+                    // 兼容 echo/回声 等使用裸占位符（无花括号）的模板
                     .replace(/SourceCharacter/g, actorTag.Tag.Nickname)
                     .replace(/TargetCharacter/g, targetChar && (targetChar.Nickname || targetChar.Name || targetChar.AccountName) || '某人');
             } else {
@@ -1347,22 +1355,26 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         return null;
     }
     /** 解析 echo 数据条目：返回 { displayName, rawName }。
-     *  规则：优先把中文当作用户可见的显示名，把非中文/带下划线当作真实 Activity Name。
-     *  如果两者都是中文或都是非中文，则 key 优先作为显示名。 */
+     *  规则：优先把纯中文当作用户可见的显示名，把含下划线/英文/数字更多的当作真实 Activity Name。
+     *  若两者原始度相同，则 key 优先作为显示名。 */
     function caResolveEchoNames(k, itemName) {
-        var kChinese = caIsChinese(k);
-        var nameChinese = caIsChinese(itemName);
-        var displayName = k, rawName = itemName;
-        if (kChinese && !nameChinese) {
-            displayName = k; rawName = itemName;
-        } else if (!kChinese && nameChinese) {
-            displayName = itemName; rawName = k;
-        } else if (!kChinese && !nameChinese) {
-            displayName = k; rawName = itemName;
-        } else {
-            displayName = k; rawName = itemName;
+        function rawScore(s) {
+            if (typeof s !== 'string' || !s) return 0;
+            var score = 0;
+            if (s.indexOf('_') !== -1) score += 3;
+            if (/^[A-Za-z0-9_]/.test(s)) score += 1;
+            // 纯中文（不含英文/数字/下划线）原始度更低
+            if (/^[\u4e00-\u9fa5]+$/.test(s)) score -= 2;
+            return score;
         }
-        return { displayName: displayName, rawName: rawName };
+        var kScore = rawScore(k);
+        var nScore = rawScore(itemName);
+        var displayName = k, rawName = itemName;
+        if (kScore > nScore) { displayName = itemName; rawName = k; }
+        else if (nScore > kScore) { displayName = k; rawName = itemName; }
+        // 原始度相同时：按旧逻辑，key 作为显示名
+        else if (!caIsChinese(k) && caIsChinese(itemName)) { displayName = itemName; rawName = k; }
+        return { displayName: displayName || k, rawName: rawName || itemName };
     }
 
     /** 提取字符串开头的中文部分（echo 原始 Activity 名通常是「中文名<ModPrefix>_<ID>」格式） */
@@ -1453,7 +1465,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             '<input type="text" id="xsact-ca-search" class="xsact-ca-search" placeholder="搜索动作...">' +
             '<div class="xsact-ca-toolbar-btns">' +
             '<button class="xsact-ca-new" id="xsact-ca-new" title="新建">' + svgIcon('plus', 14) + '<span>新建</span></button>' +
-            '<button class="xsact-ca-import" id="xsact-ca-import" title="从 echo/回声 导入">' + svgIcon('download', 14) + '</button>' +
+            '<button class="xsact-ca-import" id="xsact-ca-import" title="从 echo/回声 导入" data-tooltip="从 echo/回声 导入@@一键导入回声扩展里的自定义动作">' + svgIcon('download', 14) + '</button>' +
             '<button class="xsact-ca-export" id="xsact-ca-export" title="导出为 JSON">' + svgIcon('upload', 14) + '</button>' +
             '</div></div>';
         html += '<div class="xsact-ca-beta">自定义动作功能当前为【测试版(Beta)】，仍在开发中，可能存在不稳定或未完善之处，建议谨慎使用并及时反馈问题。</div>';
@@ -1487,7 +1499,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                     '<div class="xsact-ca-btns">' +
                         '<button class="xsact-ca-run" title="对当前目标执行" data-id="' + a.id + '">' + svgIcon('play', 14) + '</button>' +
                         '<button class="xsact-ca-edit" title="编辑" data-id="' + a.id + '">' + svgIcon('pencil', 14) + '</button>' +
-                        '<button class="xsact-ca-delete" title="删除" data-id="' + a.id + '">' + svgIcon('trash', 14) + '</button>' +
+                        '<button class="xsact-ca-delete" title="删除" data-tooltip-type="danger" data-id="' + a.id + '">' + svgIcon('trash', 14) + '</button>' +
                     '</div>' +
                 '</div>';
             });
@@ -2324,7 +2336,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
     <button class="xsact-qa-mini-btn xsact-toggle-pill" id="xsact-self-btn" title="切换自己模式">' + svgIcon('user', 14) + '<span>自己</span><span class="xsact-pill-dot"></span></button>\
     <button class="xsact-qa-mini-btn xsact-toggle-pill" id="xsact-all-btn" title="切换全员范围：开启后，动作将对房间内所有人执行">' + svgIcon('users', 14) + '<span>全员</span><span class="xsact-pill-dot"></span></button>\
     <button class="xsact-qa-mini-btn xsact-toggle-pill" id="xsact-fav-btn" title="收藏模式：开启后点击动作会加入/取消收藏">' + svgIcon('star', 14) + '<span>收藏</span><span class="xsact-pill-dot"></span></button>\
-    <button class="xsact-qa-mini-btn" id="xsact-fav-clear-btn" title="清空全部收藏动作">' + svgIcon('trash', 14) + '</button>\
+    <button class="xsact-qa-mini-btn" id="xsact-fav-clear-btn" title="清空全部收藏动作" data-tooltip-type="danger">' + svgIcon('trash', 14) + '</button>\
     <button class="xsact-qa-mini-btn" id="xsact-x3-btn" title="连续3次">' + svgIcon('bolt', 14) + '<span>×3</span></button>\
     <span class="xsact-version-tag" title="当前插件版本">v' + VERSION + '</span>\
   </div>\
@@ -2335,7 +2347,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
   <div class="xsact-char-popover-header">\
     <button class="xsact-char-popover-back" id="xsact-char-popover-back" title="返回人物列表">&#8249;</button>\
     <span class="xsact-char-popover-title" id="xsact-char-popover-title">人物列表</span>\
-    <button class="xsact-char-popover-close" id="xsact-char-popover-close" title="关闭">×</button>\
+    <button class="xsact-char-popover-close" id="xsact-char-popover-close" title="关闭" data-tooltip-type="danger">×</button>\
   </div>\
   <div class="xsact-char-popover-body" id="xsact-char-popover-body"></div>\
 </div>\
@@ -2943,7 +2955,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                         '<span class="xsact-combo-item-action">' + escapeHtml(it.label || it.action) + '</span>' +
                         '<button class="xsact-combo-item-up" title="上移">' + svgIcon('up', 13) + '</button>' +
                         '<button class="xsact-combo-item-down" title="下移">' + svgIcon('down', 13) + '</button>' +
-                        '<button class="xsact-combo-item-del" title="删除">' + svgIcon('close', 13) + '</button>' +
+                        '<button class="xsact-combo-item-del" title="删除" data-tooltip-type="danger">' + svgIcon('close', 13) + '</button>' +
                         '</div>';
                 });
                 html += '</div>';
@@ -3011,7 +3023,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                     '<div class="xsact-combo-btns">' +
                     '<button class="xsact-combo-run" title="执行">' + svgIcon('play', 14) + '</button>' +
                     '<button class="xsact-combo-edit" title="编辑">' + svgIcon('pencil', 14) + '</button>' +
-                    '<button class="xsact-combo-delete" title="删除">' + svgIcon('trash', 14) + '</button>' +
+                    '<button class="xsact-combo-delete" title="删除" data-tooltip-type="danger">' + svgIcon('trash', 14) + '</button>' +
                     '</div>' +
                     '</div>';
             });
@@ -4208,8 +4220,133 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             '@media (max-width:480px){',
             '  .xsact-update-banner{font-size:11px;}',
             '}',
+
+            /* ===== 自定义 tooltip（替换原生 title：统一风格 / 视口翻转 / 短延迟） ===== */
+            '.xsact-tooltip{',
+            '  position:fixed;z-index:100001;max-width:240px;',
+            '  padding:6px 10px;border-radius:9px;',
+            '  background:var(--xs-panel-bg);color:var(--xs-text);',
+            '  font-size:12px;line-height:1.45;white-space:normal;',
+            '  border:1px solid var(--xs-border-strong);',
+            '  box-shadow:0 6px 20px var(--xs-shadow);',
+            '  backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);',
+            '  pointer-events:none;opacity:0;transform:translateY(3px);',
+            '  transition:opacity .12s ease,transform .12s ease;',
+            '}',
+            '.xsact-tooltip.show{opacity:1;transform:translateY(0);}',
+            '.xsact-tooltip .xsact-tt-title{font-weight:600;}',
+            '.xsact-tooltip .xsact-tt-sub{display:block;margin-top:2px;color:var(--xs-text-dim);font-size:11px;line-height:1.4;}',
+            '.xsact-tooltip.is-danger{border-color:#ff6b6b;box-shadow:0 6px 20px var(--xs-shadow),0 0 0 1px rgba(255,107,107,0.25);}',
+            '.xsact-tooltip.is-danger .xsact-tt-sub{color:#ffb3b3;}',
         ].join('\n');
         document.head.appendChild(css);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // 自定义 tooltip：替换原生 title（仅作用于本插件 UI，不触达 BC 原生提示）
+    // 设计要点：
+    //  · 事件委托在 document（bubble），靠 isPluginTip() 限定作用域，BC 自身 title 完全不受影响
+    //  · 读 data-tooltip 优先（支持 @@ 分隔的「标题@@副标题」），title 兜底
+    //  · 悬停时用空格占位抑制原生 title（保留属性存在，closest 仍匹配；移出按条件还原，不覆盖逻辑动态改写的 title）
+    //  · 动态定位 + 视口翻转（上方空间不足翻到下方、超出左右则夹取），固定间距不随光标抖动
+    //  · 120ms 短延迟显隐；scroll 时隐藏避免错位
+    // ─────────────────────────────────────────────────────────────────────────
+    function initTooltip() {
+        if (window.__xsactTooltipReady) return;
+        window.__xsactTooltipReady = true;
+
+        var tip = document.createElement('div');
+        tip.className = 'xsact-tooltip';
+        tip.setAttribute('role', 'tooltip');
+        tip.style.visibility = 'hidden';
+        document.body.appendChild(tip);
+
+        var currentEl = null;
+        var showTimer = null;
+        var SHOW_DELAY = 120;
+
+        function isPluginTip(el) {
+            return !!(el && el.closest && el.closest('#xsact-qa-panel, #xsact-toggle-btn, .xsact-update-banner'));
+        }
+        function getText(el) {
+            var dt = el.getAttribute('data-tooltip');
+            if (dt && dt.trim()) return dt;
+            var t = el.getAttribute('title');
+            return (t && t.trim()) ? t : '';
+        }
+        function render(el) {
+            var raw = getText(el);
+            if (!raw) { tip.innerHTML = ''; return; }
+            var type = el.getAttribute('data-tooltip-type');
+            tip.className = 'xsact-tooltip' + (type ? ' is-' + type : '');
+            var parts = raw.split('@@');
+            var html = '<span class="xsact-tt-title">' + escapeHtml(parts[0]) + '</span>';
+            if (parts[1]) html += '<span class="xsact-tt-sub">' + escapeHtml(parts[1]) + '</span>';
+            tip.innerHTML = html;
+        }
+        function position(el) {
+            var r = el.getBoundingClientRect();
+            var tr = tip.getBoundingClientRect();
+            var gap = 8;
+            var top = r.top - tr.height - gap;
+            var left = r.left + r.width / 2 - tr.width / 2;
+            if (top < 4) top = r.bottom + gap;
+            if (left < 4) left = 4;
+            if (left + tr.width > window.innerWidth - 4) left = window.innerWidth - tr.width - 4;
+            if (top + tr.height > window.innerHeight - 4) top = window.innerHeight - tr.height - 4;
+            tip.style.top = top + 'px';
+            tip.style.left = left + 'px';
+        }
+        function show(el) {
+            if (!isPluginTip(el)) return;
+            var raw = getText(el);
+            if (!raw) return;
+            render(el); // 必须在抑制 title 之前渲染，否则 getText 会读到被清空的 title
+            // 用空格占位抑制原生 title（属性仍存在于 DOM，closest 继续匹配；外部读取不受影响）
+            if (el.getAttribute('title') && el.getAttribute('title').trim() !== '') {
+                el.__xsTitle = el.getAttribute('title');
+                el.setAttribute('title', ' ');
+            }
+            position(el);
+            tip.style.visibility = 'visible';
+            void tip.offsetWidth; // 强制 reflow 以触发过渡
+            tip.classList.add('show');
+            currentEl = el;
+        }
+        function hide() {
+            if (showTimer) { clearTimeout(showTimer); showTimer = null; }
+            tip.classList.remove('show');
+            tip.style.visibility = 'hidden';
+            if (currentEl && currentEl.__xsTitle != null) {
+                // 仅当逻辑未在 hover 期间改写过 title 时才还原，避免覆盖动态更新
+                if (!currentEl.getAttribute('title') || currentEl.getAttribute('title').trim() === '') {
+                    currentEl.setAttribute('title', currentEl.__xsTitle);
+                }
+                currentEl.__xsTitle = null;
+            }
+            currentEl = null;
+        }
+        document.addEventListener('mouseover', function(e) {
+            if (!e.target || !e.target.closest) return;
+            var el = e.target.closest('[data-tooltip],[title]');
+            if (el && isPluginTip(el)) {
+                if (showTimer) { clearTimeout(showTimer); showTimer = null; }
+                if (el !== currentEl) {
+                    if (currentEl) hide();
+                    showTimer = setTimeout(function() { show(el); }, SHOW_DELAY);
+                }
+            } else if (currentEl) {
+                hide();
+            }
+        });
+        document.addEventListener('mouseout', function(e) {
+            if (showTimer) { clearTimeout(showTimer); showTimer = null; }
+            var to = e.relatedTarget;
+            if (!to || !to.closest) { hide(); return; }
+            var el = to.closest('[data-tooltip],[title]');
+            if (!el || !isPluginTip(el)) hide();
+        });
+        window.addEventListener('scroll', function() { if (currentEl) hide(); }, true);
     }
 
     // ════════════════════════════════════════════════════════════════════════
@@ -4442,7 +4579,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         el.innerHTML = '' +
             '<div class="xsact-ub-head"><span class="xsact-ub-tag">更新可用</span>' +
             '<span class="xsact-ub-ver">v' + escapeHtml(info.version) + '</span>' +
-            '<button class="xsact-ub-close" id="xsact-ub-close" title="稍后提醒">×</button></div>' +
+            '<button class="xsact-ub-close" id="xsact-ub-close" title="稍后提醒" data-tooltip-type="danger">×</button></div>' +
             (items ? '<ul class="xsact-ub-sum">' + items + '</ul>' : '') +
             '<div class="xsact-ub-actions">' +
             (info.detailsUrl ? '<button class="xsact-ub-btn xsact-ub-primary" id="xsact-ub-details">查看详情</button>' : '') +
@@ -4473,7 +4610,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         el.innerHTML = '' +
             '<div class="xsact-ub-head"><span class="xsact-ub-tag">' + escapeHtml(tagText) + '</span>' +
             (ann.title ? '<span class="xsact-ub-title">' + escapeHtml(ann.title) + '</span>' : '') +
-            '<button class="xsact-ub-close" id="xsact-ub-close" title="知道了">×</button></div>' +
+            '<button class="xsact-ub-close" id="xsact-ub-close" title="知道了" data-tooltip-type="danger">×</button></div>' +
             (ann.message ? '<div class="xsact-ub-msg">' + escapeHtml(ann.message) + '</div>' : '') +
             (ann.detailsUrl ? '<div class="xsact-ub-actions"><button class="xsact-ub-btn xsact-ub-primary" id="xsact-ub-details">查看详情</button></div>' : '');
         el.style.display = '';
@@ -4585,6 +4722,9 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
 
         // 注入样式
         try { injectStyles(); } catch (e) { console.warn('[XSAct-QA] injectStyles 失败:', e); }
+
+        // 自定义 tooltip（替换原生 title，仅作用于本插件 UI）
+        try { initTooltip(); } catch (e) { console.warn('[XSAct-QA] initTooltip 失败:', e); }
 
         // 注册设置
         try { registerSettings(); } catch (e) { console.warn('[XSAct-QA] registerSettings 失败:', e); }
