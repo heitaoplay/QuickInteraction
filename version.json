@@ -1,19 +1,19 @@
 {
-  "version": "1.0.2",
+  "version": "1.0.3",
   "date": "2026-07-19",
   "severity": "normal",
   "summary": [
-    "v1.0.2：修复 XSAct 触发 echo 自定义动作时对方的同步/乱码问题",
-    "修复：通过 XSAct 触发 echo-activity-ext 自定义动作，对方（未安装扩展）现在能看到正确的中文动作文本，不再显示原始活动键乱码",
-    "对齐：发送逻辑现已对齐 BC 原生 ActivityRun 的兜底文本注入机制",
-    "范围：仅影响 echo 自定义动作（笨蛋笨Luzi_ 前缀），XSAct_/内置/第三方动作不受影响"
+    "v1.0.3：紧急修复 BC 游戏更新后动作列表显示乱码 / 错误文本的问题",
+    "修复：适配 BC 新版「字典缺失」哨兵格式（MISSING TEXT IN \"ActivityDictionary.csv\": Label-...）",
+    "修复：子部位（ItemMouth2 / ItemMouth3 等）重新正确回退到主部位翻译",
+    "优化：无翻译动作显示可读名称，并自动剥离 XSAct_ / LSCG_ / Liko_ / BCC_ 等 mod 前缀"
   ],
-  "detailsUrl": "https://github.com/heitaoplay/QuickInteraction/releases",
+  "detailsUrl": "https://github.com/heitaoplay/QuickInteraction/releases/tag/v1.0.3",
   "announcement": {
-    "id": "2026-07-20-custom-action-teaser",
-    "severity": "info",
-    "title": "「自定义动作」新功能预告",
-    "message": "快捷互动即将迎来全新的「自定义动作」功能——在你的面板里直接创建、编辑、管理属于你的专属动作。\n\n核心亮点：\n· 现代直观的创建流程，告别繁琐的多层菜单\n· 一键插入角色占位符，实时预览对话效果\n· 身体部位选择方式：复用游戏内身体地图，精确选部位、所见即所得\n· 跨客户端可见，对方无需安装也能看到你的动作\n\n功能正在开发中，敬请期待正式上线。",
-    "detailsUrl": "https://github.com/heitaoplay/QuickInteraction/releases"
+    "id": "2026-07-19-missing-label-hotfix",
+    "severity": "normal",
+    "title": "v1.0.3 紧急修复：动作列表乱码",
+    "message": "本次更新修复了 BC 游戏今日更新后，快捷互动动作列表出现「MISSING TEXT IN ActivityDictionary.csv」错误文本的问题。\n\n修复内容：\n· 适配 BC 新版字典缺失哨兵格式\n· 子部位（口2 / 口3 等）正确回退到主部位翻译\n· 无翻译动作显示可读名，不再展示垃圾串\n\n建议所有玩家立即更新。",
+    "detailsUrl": "https://github.com/heitaoplay/QuickInteraction/releases/tag/v1.0.3"
   }
 }
