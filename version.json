@@ -1,21 +1,22 @@
 {
-  "version": "1.0.5",
+  "version": "1.0.6",
   "date": "2026-07-19",
   "severity": "normal",
   "summary": [
-    "v1.0.5：修复 LSCG_、Liko_、小酥(XiaoSu) XSAct_ 等 mod / 第三方自定义动作发出后退化为 Chat/Action 兜底、对方看不到正确动作描述且效果丢失的问题",
-    "修复：LSCG_ 动作改发标准 Activity 包，由 LSCG 脚本正常解析执行（饥饿/口渴/道具/特殊效果）",
-    "修复：Liko_ 动作（如「对朋友的恶作剧」）改发标准 Activity 包，Liko 绑定的脚本效果正常触发",
-    "修复：小酥(XiaoSu) XSAct_ 动作改发标准 Activity 包，装/未装小酥的玩家都能看到正确中文描述",
-    "优化：沿用 ActivityDictionaryText 数组兜底补丁，标准活动字典缺失时自动回退，避免误判 MISSING",
+    "v1.0.6：echo/回声 自定义动作导入后自动「去重与屏蔽」——正确识别 echo 数据中的中文显示名与真实 Activity Name（如 笨蛋笨Luzi_xw58d），并自动从 BC 全局动作列表和 ActivityAllowedForGroup 中屏蔽 echo 端原始动作，确保插件面板和 BC 原生动作界面只显示本插件管理的版本",
+    "修复：echo 原始 Activity Name 带随机后缀（如 笨蛋笨Luzi_xw58d）时，旧版本可能只记录中文显示名导致漏屏蔽；新版同时记录 displayName / echoName / echoNames 并反向扫描 echo 数据兜底",
+    "修复：右上角主题切换（深色/浅色）按钮缺失太阳图标，导致显示为空白方块；已补全 sun/moon SVG 图标",
+    "v1.0.6：重命名「自定义动作」内部 Activity 前缀 XSAct_CA_ → XSQAct_，规避与第三方 mod 小酥的動作拓展(XiaoSuActivity) 的 XSAct* 活动名约定冲突",
+    "修复：增强旧前缀残留清理，升级用户即使不刷新页面也会清除 XSAct_CA_ 历史条目，避免动作面板显示裸 ID 或再次触发冲突",
+    "排查说明：原生动作界面「报错后消失」的根因位于第三方 mod 小酥的動作拓展（其菜单渲染 hook 会遍历活动名读取图片字典，缺失即抛错），该崩溃与 echo/BCWolfGirl 等活动也会独立触发，与本插件无必然关系",
     "说明：「自定义动作」功能当前为【测试版(Beta)】，仍在开发中，如遇异常欢迎反馈"
   ],
-  "detailsUrl": "https://github.com/heitaoplay/QuickInteraction/releases/tag/v1.0.5",
+  "detailsUrl": "https://github.com/heitaoplay/QuickInteraction/releases/tag/v1.0.6",
   "announcement": {
-    "id": "2026-07-19-mod-activity-dispatch-fix",
+    "id": "2026-07-19-xsact-ca-prefix-v106",
     "severity": "normal",
-    "title": "v1.0.5 修复：mod 动作描述丢失",
-    "message": "本次更新修复了 LSCG、Liko、小酥(XiaoSu) 等 mod / 第三方自定义动作发出后，对方只看到降级文本、动作效果丢失的问题。\n\n修复内容：\n· LSCG_ 动作改为发送标准 Activity 包，由 LSCG 脚本正常解析并执行（饥饿/口渴/道具/特殊效果）\n· Liko_ 动作（如「对朋友的恶作剧」）发送标准 Activity 包，Liko 绑定的脚本效果正常触发\n· 小酥(XiaoSu) XSAct_ 动作发送标准 Activity 包，无论对方是否安装小酥都能看到正确中文描述\n· 沿用字典数组兜底，标准活动字典缺失时自动回退，避免误判 MISSING\n\n关于「自定义动作」功能：该功能目前处于【测试版(Beta)】阶段，仍在开发中，可能存在不稳定或未完善之处，建议谨慎使用并及时反馈问题。\n\n建议所有玩家更新。",
-    "detailsUrl": "https://github.com/heitaoplay/QuickInteraction/releases/tag/v1.0.5"
+    "title": "v1.0.6：echo 导入去重、主题按钮修复与 XSAct_CA_ 前缀重命名",
+    "message": "【新功能】echo/回声 自定义动作导入后，会自动识别 echo 数据中的「中文显示名」与「真实 Activity Name」（如 笨蛋笨Luzi_xw58d），并通过「清理全局动作数组 + hook ActivityAllowedForGroup」双重机制屏蔽 echo 端原始动作。导入后插件面板和 BC 原生动作界面里只会显示本插件管理的版本，避免一个动作出现两个条目或显示原始 ID。\n\n如果之前已经导入过 echo 动作，建议刷新一次页面或重新点击「从 echo 导入」，让新版重新记录 echo 原始名并完成屏蔽。\n\n【修复】右上角深色/浅色主题切换按钮的太阳图标缺失，导致显示为空白方块；已补全 sun/moon 图标。\n\n【优化】「自定义动作」内部活动前缀从 XSAct_CA_ 重命名为 XSQAct_，避免与第三方 mod「小酥的動作拓展(XiaoSuActivity)」的 XSAct* 活动名约定冲突；同时升级后会自动清理旧前缀残留。\n\n关于「点开原生动作界面报错后消失」：经排查，该崩溃的根因位于第三方 mod「小酥的動作拓展」——其菜单渲染会遍历活动名并读取图片字典，缺失即抛错，导致界面渲染中断。该崩溃与 echo/BCWolfGirl 等 mod 也会独立触发，与「快捷互动」本身没有必然关系。若更新后仍遇到，可临时在 PCM 设置里关闭「小酥的動作拓展」。\n\n「自定义动作」功能目前仍处于【测试版(Beta)】阶段，建议谨慎使用并及时反馈。",
+    "detailsUrl": "https://github.com/heitaoplay/QuickInteraction/releases/tag/v1.0.6"
   }
 }

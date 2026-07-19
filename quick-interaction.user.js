@@ -2,7 +2,7 @@
 // @name         快捷互动 (QuickInteraction)
 // @name:zh      快捷互动
 // @namespace    https://github.com/heitaoplay/QuickInteraction
-// @version      1.0.5
+// @version      1.0.6
 // @description  Bondage Club - 统一动作操作台。一键进入动作模式，在聊天室场景内直接点人物部位选动作，绕过原生5步嵌套菜单。
 // @author       Tao MUSE
 // @homepageURL  https://github.com/heitaoplay/QuickInteraction
@@ -62,7 +62,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         if (!_serverSyncWarned) { _serverSyncWarned = true; toast('设置同步到服务器失败，已保留在本地', '#FF5C5C'); }
     }
 
-    const VERSION = '1.0.5';
+    const VERSION = '1.0.6';
 
     // ── 存储键 ──
     const S_ENABLED = 'xsact_qa_enabled';
@@ -78,7 +78,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
     const S_TOGGLE_POS = 'xsact_qa_toggle_pos';
     const S_UPDATE_DISMISSED = 'xsact_qa_update_dismissed';
     const S_LAST_ANNOUNCE = 'xsact_qa_last_announce';
-    const S_LAST_ANNOUNCE_VER = 'xsact_qa_last_announce_ver'; // 上次见到公告时的版本号，用于「发版即重新提示」
+    const S_ECHO_SUPPRESS = 'xsact_qa_echo_suppressed'; // 已导入并屏蔽的 echo 原始动作名
 
     // ── 集中状态（单一数据源，消除散落全局变量）──
     const state = {
@@ -97,7 +97,8 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         selfModeActive: false,        // 自己模式开关
         combos: [],                   // 自定义组合
         editingComboId: null,         // 正在编辑的组合 id
-        customActions: [],            // 自定义动作（XSAct 自包含版，替代 e宝/回声）
+        customActions: [],            // 自定义动作（XSAct 自包含版，替代 echo/回声）
+        echoSuppressed: new Set(),    // 已导入的 echo 原始动作名（屏蔽用）
         editingCustomId: null,        // 正在编辑的自定义动作 id
         favorites: [],                // 收藏复合键数组：格式 "部位Group|动作名"（如 "ItemMouth|Caress"）
         presets: [],                  // 预留预设
@@ -227,9 +228,31 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         try { var v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; }
         catch (e) { console.error('[XSAct-QA] 读取存储失败 ' + key + ':', e); return fallback; }
     }
+    // 安全序列化：遇到循环引用时跳過（用 [Circular] 占位），避免保存直接抛错丢数据。
+    // 同时尽力在二次报错里打印出循环路径，方便定位真实根因（正常扁平数据不受影响）。
+    function safeStringify(val) {
+        var seen = new WeakSet();
+        return JSON.stringify(val, function(key, value) {
+            if (typeof value === 'object' && value !== null) {
+                if (seen.has(value)) return '[Circular]';
+                seen.add(value);
+            }
+            return value;
+        });
+    }
     function saveStorage(key, val) {
         try { localStorage.setItem(key, JSON.stringify(val)); }
-        catch (e) { console.error('[XSAct-QA] 写入存储失败 ' + key + ':', e); }
+        catch (e) {
+            console.error('[XSAct-QA] 写入存储失败 ' + key + ':', e);
+            try {
+                if (typeof val === 'object' && val) {
+                    console.error('  keys=', Object.keys(val).join(','), 'types=', Object.keys(val).map(function(k){ return typeof val[k]; }).join(','));
+                }
+            } catch (_) {}
+            // 二次兜底：跳过循环引用，保证数据尽量落盘，绝不让存储写入中断业务流程
+            try { localStorage.setItem(key, safeStringify(val)); console.warn('[XSAct-QA] 已用安全序列化兜底写入 ' + key + '（跳过循环引用）'); }
+            catch (e2) { console.error('[XSAct-QA] 安全兜底仍失败 ' + key + ':', e2); }
+        }
     }
 
     // ── 主题 / 设置键 ──
@@ -354,9 +377,10 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                 var allowed = ActivityAllowedForGroup(targetChar, partGroup);
                 if (Array.isArray(allowed) && allowed.length > 0) {
                     actions = allowed.map(function(a) {
+                        if (!a) return null;
                         var name = a.Activity ? (a.Activity.Name || '') : (a.Name || '');
                         return { Name: name, translatedName: getActivityLabelFallback(name, partGroup), Item: a.Item || null };
-                    }).filter(function(a) { return a.Name; });
+                    }).filter(function(a) { return a && a.Name; });
                 }
             } catch (e) {
                 console.warn('[XSAct-QA] ActivityAllowedForGroup 失败，改用全量列表:', e.message);
@@ -399,6 +423,11 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                                       a.translatedName.indexOf('MISSING TEXT IN') !== -1 ||
                                       a.translatedName.indexOf('MISSING ACTIVITY') !== -1))) return false;
             if (!shouldKeepAction(a.Name, partGroup)) return false;
+            // 自定义动作：仅保留标记为可见的
+            if (a.Name.indexOf(CA_PREFIX) === 0) {
+                var ca = caFindByActivityName(a.Name);
+                if (ca && ca.visible === false) return false;
+            }
             if (seen[a.Name]) return false;
             seen[a.Name] = true;
             return true;
@@ -444,6 +473,29 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
     function patchActivityDictionaryText() {
         if (window.__XSACT_ADT_PATCHED) return;
         if (typeof window.ActivityDictionaryText !== 'function' || !Array.isArray(window.ActivityDictionary)) return;
+        // 优先用 ModSDK hook（BCX 兼容，不会触发 Unknown mod not using ModSDK 警告）
+        if (state.modApi && typeof state.modApi.hookFunction === 'function') {
+            state.modApi.hookFunction('ActivityDictionaryText', 0, function(args, next) {
+                var r = next(args);
+                if (r && !isMissingLabel(r)) return r;
+                var key = args[0];
+                if (typeof key === 'string') {
+                    var arr = window.ActivityDictionary;
+                    for (var i = 0; i < arr.length; i++) {
+                        var e = arr[i];
+                        if (Array.isArray(e) && e[0] === key && typeof e[1] === 'string' && !isMissingLabel(e[1])) {
+                            return e[1];
+                        }
+                    }
+                }
+                return r;
+            });
+            window.__XSACT_ADT_PATCHED = true;
+            logD('[XSAct-QA] 已打 ActivityDictionaryText SDK hook 兜底');
+            return;
+        }
+        // 降级：SDK 不可用时直接覆盖（仅在热注入/异常降级场景触发，可能触发 BCX 警告）
+        console.warn('[XSAct-QA] ModSDK hook 不可用，降级为 ActivityDictionaryText 直接覆盖；建议检查是否重复注入');
         var _orig = window.ActivityDictionaryText;
         window.ActivityDictionaryText = function(key) {
             var r = _orig.apply(this, arguments);
@@ -460,11 +512,17 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             return r;
         };
         window.__XSACT_ADT_PATCHED = true;
-        logD('[XSAct-QA] 已打 ActivityDictionaryText 数组兜底补丁');
+        logD('[XSAct-QA] 已打 ActivityDictionaryText 直接兜底补丁（SDK 不可用）');
     }
 
     function getActivityLabelFallback(name, targetGroup) {
         if (!name) return '';
+        // 自定义动作：直接返回用户定义的名字，避免显示 CA_xxx 内部 ID
+        if (name.indexOf(CA_PREFIX) === 0) {
+            var ca = caFindByActivityName(name);
+            if (ca) return ca.name;
+            return name.substring(CA_PREFIX.length);
+        }
         if (typeof window.ActivityDictionaryText !== 'function') {
             if (name.indexOf('XSAct_') === 0) return name.substring(6);
             return name;
@@ -639,28 +697,52 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         var isPlayerTarget = Player && targetChar && targetChar.MemberNumber === Player.MemberNumber;
         var isTargetSelf = isSelfAction && !isPlayerTarget;
 
-        // 自定义动作（XSAct_CA_ 前缀）：走 BC 原生「Action 文本」机制（与游戏内 `.a` / BCX 同款）。
+        function charTagForAction(c) {
+            return {
+                Tag: {
+                    MemberNumber: c && c.MemberNumber || 0,
+                    Name: c && (c.Name || c.AccountName) || '某人',
+                    Nickname: c && (c.Nickname || c.Name || c.AccountName) || '某人'
+                }
+            };
+        }
+
+        // 自定义动作（XSQAct_ 前缀）：走 BC 原生「Action 文本」机制（与游戏内 `.a` / BCX 同款）。
         // 关键：包里直接内嵌对话文本（Text 字段），接收端（含原生 BC 与 BCX）直接渲染，
         // 不需要接收方安装任何插件 —— 解决「标准 Activity 包会让无插件者看到 MISSING TEXT」的问题。
         // 昵称由我们在文本里用 {SourceCharacter}/{TargetCharacter} → Nickname 手动拼入，确保显示昵称而非原始 ID。
         // 本地动画副作用由 executeAction 里的 ActivityRun 负责（活动已 push 进 AssetAllActivities，仅本客户端生效）。
-        if (/^XSAct_CA_/.test(name)) {
+        if (new RegExp('^' + CA_PREFIX).test(name)) {
             var ca = caFindByActivityName(name);
             if (ca) {
                 var caSrc = (Player && (Player.Nickname || Player.Name || Player.AccountName)) || '某人';
                 var caTgt = (targetChar && (targetChar.Nickname || targetChar.Name || targetChar.AccountName)) || '某人';
-                var caDialog = isSelfAction
-                    ? ((ca.dialogSelf && ca.dialogSelf.trim()) ? ca.dialogSelf : ca.dialog)
-                    : ca.dialog;
+                // 文本选择规则：
+                // - 仅自己：始终用 dialogSelf（自己视角），回退到 dialog
+                // - 仅他人：始终用 dialog（他人视角）
+                // - 任意：根据当前实际目标是否玩家自己切换
+                var caDialog;
+                if (ca.scope === 'self') {
+                    caDialog = (ca.dialogSelf && ca.dialogSelf.trim()) ? ca.dialogSelf : ca.dialog;
+                } else if (ca.scope === 'other') {
+                    caDialog = ca.dialog;
+                } else {
+                    caDialog = isSelfAction
+                        ? ((ca.dialogSelf && ca.dialogSelf.trim()) ? ca.dialogSelf : ca.dialog)
+                        : ca.dialog;
+                }
                 if (!caDialog) caDialog = ca.name || '某个动作';
                 caDialog = caDialog
                     .replace(/\{SourceCharacter\}/g, caSrc)
-                    .replace(/\{TargetCharacter\}/g, caTgt);
+                    .replace(/\{TargetCharacter\}/g, caTgt)
+                    // 兼容 echo/回声 导入时的裸占位符写法（无花括号）
+                    .replace(/SourceCharacter/g, caSrc)
+                    .replace(/TargetCharacter/g, caTgt);
                 return {
                     Content: 'XSAct_ChatFallback',
                     Type: 'Action',
                     Dictionary: [
-                        Player.MemberNumber,
+                        charTagForAction(Player),
                         { Tag: 'MISSING TEXT IN "Interface.csv": XSAct_ChatFallback', Text: caDialog }
                     ]
                 };
@@ -687,10 +769,10 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         // 从而被误判 contentKeyMissing 退回 Action 兜底 —— 这正是效果丢失的根因。
         // patchActivityDictionaryText()（main 登录后安装，数组兜底）已让 ActivityDictionaryText
         // 在 MISSING 时回退数组查找，使 contentKeyMissing 对 XSAct_ 也变 false；
-        // 这里再对 XSAct_（排除本插件自定义动作 XSAct_CA_）强制走标准 Activity 包，双保险，
+        // 这里再对 XSAct_（排除本插件自定义动作 XSQAct_）强制走标准 Activity 包，双保险，
         // 与它们在真实游戏里原生触发完全一致。findAllowedActivity 已兜底兜住
         // 「活动不在 AssetAllActivities」的非法情况，不会发出无效包。
-        var isForcedActivityMod = /^(LSCG_|Liko_|XSAct_(?!CA_))/.test(name || '');
+        var isForcedActivityMod = /^(LSCG_|Liko_|XSAct_)/.test(name || '');
 
         if (contentKeyMissing && !isForcedActivityMod) {
             // 走 BC 原生「自定义动作文本」机制（与游戏内 `.a ` 前缀 / BCX 同款）：
@@ -701,15 +783,6 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             // 注意：Action 消息的 Dictionary[0] 必须是角色对象，且包在 {Tag: ...} 里。
             // BC 渲染名字时会优先读 tag.Nickname，没有再读 tag.Name。
             // 直接传 MemberNumber 或 {SourceCharacter} 对象都无法触发 nickname。
-            function charTagForAction(c) {
-                return {
-                    Tag: {
-                        MemberNumber: c && c.MemberNumber || 0,
-                        Name: c && (c.Name || c.AccountName) || '某人',
-                        Nickname: c && (c.Nickname || c.Name || c.AccountName) || '某人'
-                    }
-                };
-            }
             var actor = isTargetSelf ? targetChar : Player;
             var actorTag = charTagForAction(actor);
             var sentence;
@@ -782,7 +855,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
 
     /** 记录上次动作（抽取公共代码） */
     function recordLastAction(name, targetMN, part, dict) {
-        state.lastAction = { name: name, targetMN: targetMN, dict: dict, part: part, time: Date.now() };
+        state.lastAction = { name: name, targetMN: targetMN, part: part, time: Date.now() };
         saveStorage(S_LAST, state.lastAction);
     }
 
@@ -794,6 +867,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             var allowed = ActivityAllowedForGroup(char, group);
             if (!Array.isArray(allowed)) return null;
             return allowed.find(function(a) {
+                if (!a) return false;
                 var n = a.Activity ? a.Activity.Name : a.Name;
                 return n === name;
             }) || null;
@@ -1004,13 +1078,14 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
     }
 
     /* ══════════════════════════════════════════════════════════════
-       自定义动作（XSAct 自包含版，替代 e宝/回声 echo-activity-ext）
+       自定义动作（XSAct 自包含版，替代 echo/回声 echo-activity-ext）
        —— 参考 echo 注册内核，但完全重做 UI；直接用 BC 原生 ActivityAdd，
           不引入 sugarch 依赖。跨客户端可见性靠 makeActivityPacket 的
           Action 兜底分支（名字含下划线 → 走彩色小字动作，文本用本地字典）。
        ══════════════════════════════════════════════════════════════ */
 
     /* ===== 6.5 自定义动作（CRUD + 注册 + 执行 + 互通） ===== */
+    var CA_PREFIX = 'XSQAct_';  // 自定义动作内部 Activity 名前缀；避免与 XiaoSuActivity 的 XSAct_ 前缀冲突
     function caHash(str) {
         // 稳定字符串哈希 → base36，避免引入 btoa / 中文编码问题
         var h = 5381;
@@ -1021,34 +1096,40 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         return h.toString(36);
     }
     function caActivityName(act) {
-        return 'XSAct_CA_' + caHash(act.name + '|' + act.group + '|' + act.scope);
+        return CA_PREFIX + caHash(act.name + '|' + act.group + '|' + act.scope);
     }
     function caBuildActivityDef(act) {
         var actName = caActivityName(act);
         var isSelfOnly = act.scope === 'self';
         var isOtherOnly = act.scope === 'other';
+        // 与 BC 原生 Activity 对象格式保持一致，避免第三方插件（PAT All / echo等）
+        // 在处理时读到未定义字段而崩溃。
         return {
             Name: actName,
-            Prerequisite: [],
+            ActivityID: -1,
             MaxProgress: 0,
+            Prerequisite: [],
             Target: isSelfOnly ? [] : [act.group],
-            TargetSelf: isOtherOnly ? [] : [act.group],
-            Dictionary: [
-                { Tag: 'ChatOther-' + act.group + '-' + actName, Text: act.dialog || act.name },
-                { Tag: 'ChatSelf-' + act.group + '-' + actName, Text: (act.dialogSelf && act.dialogSelf.trim()) ? act.dialogSelf : (act.dialog || act.name) }
-            ]
+            TargetSelf: isOtherOnly ? [] : [act.group]
         };
     }
     function caRegister(act) {
         // 本 BC 版本无全局 ActivityAdd；活动来自 AssetAllActivities(fam) 数组。
-        // 直接把活动对象 push 进该数组即可被 findAllowedActivity / ActivityRun 识别。
+        // 直接把标准活动对象 push 进该数组即可被 findAllowedActivity / ActivityRun 识别。
         try {
+            // 隐藏动作：从 BC 注册表移除，避免出现在动作面板和原生动作列表
+            if (act.visible === false) { caUnregister(act); return false; }
             var fam = (Player && Player.AssetFamily) || 'Female3DCG';
             var acts = AssetAllActivities(fam);
             if (!Array.isArray(acts)) return false;
+            var actName = caActivityName(act);
             // 避免重复注册
-            if (acts.some(function(a) { return a && a.Name === caActivityName(act); })) return true;
+            if (acts.some(function(a) { return a && a.Name === actName; })) return true;
             acts.push(caBuildActivityDef(act));
+            // 同步加入排序索引数组，否则 ActivityAllowedForGroup 排序后第三方插件可能读到 undefined
+            if (Array.isArray(ActivityFemale3DCGOrdering) && ActivityFemale3DCGOrdering.indexOf(actName) === -1) {
+                ActivityFemale3DCGOrdering.push(actName);
+            }
             return true;
         } catch (e) { console.warn('[XSAct-QA] 注册自定义动作失败:', act.name, e.message); return false; }
     }
@@ -1060,6 +1141,12 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             var nm = caActivityName(act);
             for (var i = acts.length - 1; i >= 0; i--) {
                 if (acts[i] && acts[i].Name === nm) acts.splice(i, 1);
+            }
+            // 同步从排序索引数组移除
+            if (Array.isArray(ActivityFemale3DCGOrdering)) {
+                for (var j = ActivityFemale3DCGOrdering.length - 1; j >= 0; j--) {
+                    if (ActivityFemale3DCGOrdering[j] === nm) ActivityFemale3DCGOrdering.splice(j, 1);
+                }
             }
         } catch (_) {}
     }
@@ -1073,6 +1160,21 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
     function loadCustomActions() {
         state.customActions = loadSetting(S_CUSTOM, []);
         if (!Array.isArray(state.customActions)) state.customActions = [];
+        // 迁移旧数据：补 visible/source 字段，并尽量识别是否从 echo/回声 导入
+        var echoNames = new Set();
+        try {
+            var ext = Player && Player.ExtensionSettings;
+            var echoKey = ext && Object.keys(ext).find(function(k) { return k.indexOf('ECHO') === 0; });
+            var echoData = echoKey && ext[echoKey] && ext[echoKey]['动作数据'];
+            if (echoData) Object.values(echoData).forEach(function(item) { if (item && item.Name) echoNames.add(item.Name); });
+        } catch (e) {}
+        state.customActions.forEach(function(a) {
+            if (typeof a.visible !== 'boolean') a.visible = true;
+            if (!a.source) a.source = echoNames.has(a.name) ? 'echo' : 'native';
+        });
+        // 同步 echo 屏蔽集合，并立即清理已存在的 echo 原始重复动作
+        rebuildEchoSuppressed();
+        caRemoveSuppressedEchoActivities();
     }
     function saveCustomActions() { persist(S_CUSTOM, state.customActions); }
     function getCustom(id) {
@@ -1096,7 +1198,191 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         if (!act) return;
         caUnregister(act);
         state.customActions = state.customActions.filter(function(a) { return a.id !== id; });
+        // 若删除的是 echo 导入动作，且没有同名动作残留，则取消屏蔽 echo 原始动作
+        if (act.source === 'echo' && act.name && !state.customActions.some(function(a) { return a.name === act.name && a.source === 'echo'; })) {
+            state.echoSuppressed.delete(act.name);
+            if (act.echoName) state.echoSuppressed.delete(act.echoName);
+            saveEchoSuppressed();
+        }
         saveCustomActions();
+    }
+    /**
+     * echo/回声 导入动作屏蔽机制：
+     * 当用户把 echo 自定义动作导入到本插件后，本插件会生成 XSQAct_ 前缀的新 BC Activity。
+     * 如果不把 echo 端同名的原始 Activity 屏蔽，动作面板和 BC 原生动作列表里会出现两个同名动作。
+     * 方案：
+     *   1. 导入时记录 echo 原始动作名（data[].Name）。
+     *   2. 启动/导入后从 AssetAllActivities / ActivityFemale3DCGOrdering 中移除这些原始名。
+     *   3. hook ActivityAllowedForGroup 作为兜底，始终过滤掉 suppressed 名。
+     *   4. 删除导入的 echo 动作时从屏蔽集合中移除，恢复 echo 原始动作。
+     */
+    function loadEchoSuppressed() {
+        try {
+            var arr = loadSetting(S_ECHO_SUPPRESS, []);
+            if (!Array.isArray(arr)) arr = [];
+            state.echoSuppressed = new Set(arr.filter(function(n) { return typeof n === 'string' && n; }));
+        } catch (e) {
+            state.echoSuppressed = new Set();
+        }
+    }
+    function saveEchoSuppressed() {
+        try { persist(S_ECHO_SUPPRESS, Array.from(state.echoSuppressed)); } catch (e) {}
+    }
+    function rebuildEchoSuppressed() {
+        // 以持久化的屏蔽集合为基础，同步当前所有 source==='echo' 的自定义动作名，
+        // 并扫描 BC 注册表 / echo 原始数据把真实 echo 原始 Activity 名（如 笨蛋笨Luzi_xw58d）一起加进屏蔽。
+        loadEchoSuppressed();
+        var echoData = caGetEchoData();
+        state.customActions.forEach(function(a) {
+            if (!a || a.source !== 'echo' || !a.name) return;
+            // 1. 直接用导入时记录的原始名
+            if (a.echoName && typeof a.echoName === 'string') state.echoSuppressed.add(a.echoName);
+            if (Array.isArray(a.echoNames)) a.echoNames.forEach(function(n) { if (n) state.echoSuppressed.add(n); });
+            // 2. 从 echo 数据中查找对应条目，把 key / item.Name 都加入屏蔽
+            if (echoData) {
+                var entry = caFindEchoEntry(echoData, a.name);
+                if (!entry && a.echoName) entry = caFindEchoEntry(echoData, a.echoName);
+                if (entry) {
+                    var resolved = caResolveEchoNames(entry.key, entry.item.Name);
+                    state.echoSuppressed.add(entry.key);
+                    state.echoSuppressed.add(entry.item.Name);
+                    state.echoSuppressed.add(resolved.displayName);
+                    state.echoSuppressed.add(resolved.rawName);
+                    // 扫描注册表，把真实 Activity Name 也加进来
+                    var found = caFindEchoNamesInRegistry(entry.item, entry.key, a.group);
+                    found.forEach(function(n) { state.echoSuppressed.add(n); });
+                }
+            }
+            // 3. 兜底：用中文名扫描注册表
+            var found = caFindEchoNamesInRegistry({ Name: a.name }, a.echoName, a.group);
+            found.forEach(function(n) { state.echoSuppressed.add(n); });
+        });
+        saveEchoSuppressed();
+    }
+    function caSuppressEchoName(name) {
+        if (!name) return;
+        state.echoSuppressed.add(name);
+        saveEchoSuppressed();
+    }
+    function caIsEchoSuppressed(name) {
+        return !!name && state.echoSuppressed.has(name);
+    }
+    /** 判断字符串是否包含中文 */
+    function caIsChinese(s) { return typeof s === 'string' && /[\u4e00-\u9fa5]/.test(s); }
+    /** 判断字符串是否像 echo 原始 Activity Name（非中文且含下划线或字母数字混合） */
+    function caLooksLikeRawActivityName(s) {
+        if (typeof s !== 'string' || !s) return false;
+        if (s.indexOf('_') !== -1) return true;
+        if (/^[A-Za-z0-9]+$/.test(s)) return true;
+        return !caIsChinese(s);
+    }
+    /** 从 echo 扩展设置中读取「动作数据」 */
+    function caGetEchoData() {
+        try {
+            var ext = Player && Player.ExtensionSettings;
+            var echoKey = ext && Object.keys(ext).find(function(k) { return k.indexOf('ECHO') === 0; });
+            return echoKey && ext[echoKey] && ext[echoKey]['动作数据'];
+        } catch (e) { return null; }
+    }
+    /** 在 echo 动作数据中查找与指定名字对应的条目（key 或 Name 匹配） */
+    function caFindEchoEntry(data, name) {
+        if (!data || typeof name !== 'string' || !name) return null;
+        for (var k in data) {
+            var item = data[k];
+            if (!item) continue;
+            if (k === name || item.Name === name) return { key: k, item: item };
+        }
+        return null;
+    }
+    /** 解析 echo 数据条目：返回 { displayName, rawName }。
+     *  规则：优先把中文当作用户可见的显示名，把非中文/带下划线当作真实 Activity Name。
+     *  如果两者都是中文或都是非中文，则 key 优先作为显示名。 */
+    function caResolveEchoNames(k, itemName) {
+        var kChinese = caIsChinese(k);
+        var nameChinese = caIsChinese(itemName);
+        var displayName = k, rawName = itemName;
+        if (kChinese && !nameChinese) {
+            displayName = k; rawName = itemName;
+        } else if (!kChinese && nameChinese) {
+            displayName = itemName; rawName = k;
+        } else if (!kChinese && !nameChinese) {
+            displayName = k; rawName = itemName;
+        } else {
+            displayName = k; rawName = itemName;
+        }
+        return { displayName: displayName, rawName: rawName };
+    }
+
+    /** 提取字符串开头的中文部分（echo 原始 Activity 名通常是「中文名<ModPrefix>_<ID>」格式） */
+    function caExtractChinesePrefix(s) {
+        if (!s) return '';
+        var m = String(s).match(/^[\u4e00-\u9fa5]+/);
+        return m ? m[0] : '';
+    }
+    /** 根据导入的 echo 数据，在 BC 全局 Activity 注册表中找出应被屏蔽的原始 Activity 真实名字。
+     *  echo 存储的 item.Name 可能是中文显示名（如「笨蛋笨」），而实际注册名会带随机后缀
+     *  （如「笨蛋笨Luzi_xw58d」），直接按 item.Name 匹配会漏网，导致面板仍显示原始 ID。
+     *  这里按：精确名、中文前缀、同部位 三个维度匹配，把真实注册名加入屏蔽集合。
+     *  candidates 包括 item.Name 和 echo 数据 key，覆盖不同版本 echo 的存储格式。 */
+    function caFindEchoNamesInRegistry(item, dataKey, group) {
+        var names = new Set();
+        try {
+            var fam = (Player && Player.AssetFamily) || 'Female3DCG';
+            var acts = AssetAllActivities(fam);
+            if (!Array.isArray(acts)) return names;
+            var candidates = [item.Name, dataKey].filter(function(n) { return typeof n === 'string' && n; });
+            var ourPrefix = CA_PREFIX;
+
+            // 1. 精确匹配：item.Name / dataKey 刚好就是注册名
+            candidates.forEach(function(n) {
+                acts.forEach(function(a) {
+                    if (a && a.Name === n && a.Name.indexOf(ourPrefix) !== 0) names.add(a.Name);
+                });
+            });
+
+            // 2. 中文前缀匹配：注册名以「中文显示名」开头，且同部位（如 笨蛋笨 -> 笨蛋笨Luzi_xw58d）
+            candidates.forEach(function(n) {
+                var prefix = caExtractChinesePrefix(n);
+                if (!prefix) return;
+                acts.forEach(function(a) {
+                    if (!a || !a.Name) return;
+                    if (a.Name.indexOf(ourPrefix) === 0) return;
+                    if (a.Name.indexOf(prefix) !== 0) return;
+                    // 同部位校验：group 一致或该项注册时未指定部位则放行
+                    var inGroup = false;
+                    if (!group) { inGroup = true; }
+                    else {
+                        if (Array.isArray(a.Target) && a.Target.indexOf(group) !== -1) inGroup = true;
+                        if (Array.isArray(a.TargetSelf) && a.TargetSelf.indexOf(group) !== -1) inGroup = true;
+                    }
+                    if (inGroup) names.add(a.Name);
+                });
+            });
+        } catch (e) { console.warn('[XSAct-QA] 扫描 echo 原始动作名失败:', e.message); }
+        return names;
+    }
+    function caRemoveSuppressedEchoActivities() {
+        // 从 BC 全局 Activity 数组和排序索引中移除被屏蔽的 echo 原始动作名
+        try {
+            var fam = (Player && Player.AssetFamily) || 'Female3DCG';
+            var acts = AssetAllActivities(fam);
+            if (Array.isArray(acts)) {
+                for (var i = acts.length - 1; i >= 0; i--) {
+                    var a = acts[i];
+                    if (a && a.Name && caIsEchoSuppressed(a.Name) && a.Name.indexOf(CA_PREFIX) !== 0) {
+                        acts.splice(i, 1);
+                    }
+                }
+            }
+            if (Array.isArray(ActivityFemale3DCGOrdering)) {
+                for (var j = ActivityFemale3DCGOrdering.length - 1; j >= 0; j--) {
+                    var nm = ActivityFemale3DCGOrdering[j];
+                    if (nm && caIsEchoSuppressed(nm) && nm.indexOf(CA_PREFIX) !== 0) {
+                        ActivityFemale3DCGOrdering.splice(j, 1);
+                    }
+                }
+            }
+        } catch (e) { console.warn('[XSAct-QA] 清理 echo 重复动作失败:', e.message); }
     }
     function caNewId() { return 'ca_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 7); }
 
@@ -1120,27 +1406,41 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         titleEl.textContent = (characterDisplayName(charObj) || '?') + ' → 我的动作（测试版）';
         var acts = state.customActions;
         var html = '';
+        html += '<div class="xsact-ca-view">';
         html += '<div class="xsact-ca-toolbar">' +
             '<input type="text" id="xsact-ca-search" class="xsact-ca-search" placeholder="搜索动作...">' +
-            '<button class="xsact-ca-new" id="xsact-ca-new">' + svgIcon('plus', 14) + '<span>新建</span></button>' +
-            '<button class="xsact-ca-import" id="xsact-ca-import" title="从 e宝/回声 导入">' + svgIcon('download', 14) + '<span>导入</span></button>' +
-            '<button class="xsact-ca-export" id="xsact-ca-export" title="导出为 JSON">' + svgIcon('upload', 14) + '<span>导出</span></button>' +
-            '</div>';
+            '<div class="xsact-ca-toolbar-btns">' +
+            '<button class="xsact-ca-new" id="xsact-ca-new" title="新建">' + svgIcon('plus', 14) + '<span>新建</span></button>' +
+            '<button class="xsact-ca-import" id="xsact-ca-import" title="从 echo/回声 导入">' + svgIcon('download', 14) + '</button>' +
+            '<button class="xsact-ca-export" id="xsact-ca-export" title="导出为 JSON">' + svgIcon('upload', 14) + '</button>' +
+            '</div></div>';
         html += '<div class="xsact-ca-beta">自定义动作功能当前为【测试版(Beta)】，仍在开发中，可能存在不稳定或未完善之处，建议谨慎使用并及时反馈问题。</div>';
         if (!acts.length) {
-            html += '<div class="xsact-qa-empty">还没有自定义动作。点「新建」创建，或点「导入」从 e宝/回声 迁移。</div>';
+            html += '<div class="xsact-qa-empty xsact-ca-empty">还没有自定义动作。点「新建」创建，或点「导入」从 echo/回声 迁移。</div>';
         } else {
             html += '<div class="xsact-ca-list">';
             acts.forEach(function(a) {
-                var scopeBadge = a.scope === 'self' ? '<span class="xsact-ca-badge self">对自己</span>'
-                    : a.scope === 'other' ? '<span class="xsact-ca-badge other">对他人</span>'
-                    : '<span class="xsact-ca-badge any">任意</span>';
+                var scopeBadge = a.scope === 'self' ? '<span class="xsact-ca-badge self">仅自己</span>'
+                    : a.scope === 'other' ? '<span class="xsact-ca-badge other">仅他人</span>'
+                    : '<span class="xsact-ca-badge any">皆可</span>';
+                var sourceBadge = a.source === 'echo' ? '<span class="xsact-ca-src echo" title="来自 echo/回声 导入">echo</span>' : '<span class="xsact-ca-src native" title="本插件创建">XSAct</span>';
                 var partLbl = (BODY_PARTS.find(function(p) { return p.group === a.group; }) || {}).label || a.group;
-                html += '<div class="xsact-ca-card" data-id="' + a.id + '">' +
+                var isVisible = a.visible !== false;
+                html += '<div class="xsact-ca-card' + (isVisible ? '' : ' is-hidden') + '" data-id="' + a.id + '">' +
                     '<div class="xsact-ca-info">' +
-                        '<span class="xsact-ca-name">' + escapeHtml(a.name) + '</span>' +
-                        scopeBadge +
-                        '<span class="xsact-ca-part">' + escapeHtml(partLbl) + '</span>' +
+                        '<div class="xsact-ca-title">' +
+                            '<span class="xsact-ca-name">' + escapeHtml(a.name) + '</span>' +
+                            scopeBadge +
+                            sourceBadge +
+                        '</div>' +
+                        '<div class="xsact-ca-meta">' +
+                            '<label class="xsact-ca-toggle" title="在「动作」面板和 BC 原生动作列表中显示">' +
+                                '<input type="checkbox" class="xsact-ca-visible" data-id="' + a.id + '"' + (isVisible ? ' checked' : '') + '>' +
+                                '<span class="xsact-ca-toggle-track"></span>' +
+                                '<span class="xsact-ca-toggle-label">' + (isVisible ? '显示' : '隐藏') + '</span>' +
+                            '</label>' +
+                            '<span class="xsact-ca-part">' + escapeHtml(partLbl) + '</span>' +
+                        '</div>' +
                     '</div>' +
                     '<div class="xsact-ca-btns">' +
                         '<button class="xsact-ca-run" title="对当前目标执行" data-id="' + a.id + '">' + svgIcon('play', 14) + '</button>' +
@@ -1151,12 +1451,13 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             });
             html += '</div>';
         }
+        html += '</div>';
         listEl.innerHTML = html;
 
         var newBtn = listEl.querySelector('#xsact-ca-new');
         if (newBtn) newBtn.addEventListener('click', function() {
             state.editingCustomId = caNewId();
-            var draft = { id: state.editingCustomId, name: '', scope: 'other', group: 'ItemMouth', dialog: '', dialogSelf: '', createdAt: Date.now() };
+            var draft = { id: state.editingCustomId, name: '', scope: 'other', group: 'ItemMouth', dialog: '', dialogSelf: '', createdAt: Date.now(), source: 'native', visible: true };
             renderCustomEditor(draft, charObj, listEl, titleEl);
         });
         var importBtn = listEl.querySelector('#xsact-ca-import');
@@ -1184,27 +1485,81 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                 if (a && confirm('确定删除自定义动作「' + a.name + '」吗？')) { deleteCustom(id); updateCustomActionPanel(charObj); toast('已删除', '#888'); }
             });
         });
+        listEl.querySelectorAll('.xsact-ca-visible').forEach(function(chk) {
+            chk.addEventListener('change', function() {
+                var id = chk.dataset.id;
+                var a = getCustom(id);
+                if (!a) return;
+                a.visible = !!chk.checked;
+                saveCustomActions();
+                caRegister(a); // 隐藏时卸载，显示时注册
+                updateCustomActionPanel(charObj);
+                toast(a.visible ? '已显示「' + a.name + '」' : '已隐藏「' + a.name + '」', a.visible ? '#46E0A0' : '#888');
+            });
+        });
+    }
+
+    /** 渲染一个迷你身体部位选择 SVG（用于自定义动作编辑器内）。
+     *  复用 BC 原生 Zone 矩形，尺寸自适应容器。 */
+    function renderBodyMapMini(container, selectedGroup, onSelect) {
+        var rects = '';
+        BODY_PARTS.forEach(function(part) {
+            var zones = getPartZones(Player, part.group);
+            zones.forEach(function(z) {
+                var rx = Math.min(14, Math.min(z[2], z[3]) * 0.35);
+                var sel = (selectedGroup === part.group) ? ' selected' : '';
+                rects += '<rect class="xsact-body-part-zone' + sel + '" data-group="' + part.group +
+                    '" x="' + z[0].toFixed(1) + '" y="' + z[1].toFixed(1) + '" width="' + z[2].toFixed(1) +
+                    '" height="' + z[3].toFixed(1) + '" rx="' + rx.toFixed(1) + '" data-label="' + part.label + '"/>';
+            });
+        });
+        var svg = '<svg class="xsact-body-mini-svg" viewBox="0 0 500 1000" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">' + rects + '</svg>';
+        container.innerHTML = '<div class="xsact-body-mini-hint">点击框选身体部位</div>' + svg;
+        var hint = container.querySelector('.xsact-body-mini-hint');
+        container.querySelectorAll('.xsact-body-part-zone').forEach(function(zone) {
+            zone.addEventListener('mouseenter', function() {
+                if (hint) hint.textContent = zone.dataset.label || zone.dataset.group;
+                zone.classList.add('hover');
+            });
+            zone.addEventListener('mouseleave', function() {
+                if (hint) hint.textContent = '点击框选身体部位';
+                zone.classList.remove('hover');
+            });
+            zone.addEventListener('click', function(e) {
+                e.stopPropagation();
+                var group = zone.dataset.group;
+                container.querySelectorAll('.xsact-body-part-zone').forEach(function(z) {
+                    z.classList.toggle('selected', z.dataset.group === group);
+                });
+                if (onSelect) onSelect(group, zone.dataset.label || group);
+            });
+        });
     }
 
     function renderCustomEditor(act, charObj, listEl, titleEl) {
         var isNew = !getCustom(act.id);
         titleEl.textContent = (isNew ? '新建' : '编辑') + '：自定义动作';
         var scope = act.scope || 'other';
+        var group = act.group || 'ItemMouth';
+        var partLbl = (BODY_PARTS.find(function(p) { return p.group === group; }) || {}).label || group;
         var html = '<div class="xsact-ca-editor">';
         html += '<div class="xsact-combo-field"><label>动作名称</label><input type="text" id="xsact-ca-name" value="' + escapeHtml(act.name) + '" placeholder="如：轻轻咬住"></div>';
-        html += '<div class="xsact-combo-field"><label>作用目标</label><div class="xsact-ca-scope" id="xsact-ca-scope">' +
-            '<button data-scope="other" class="' + (scope === 'other' ? 'active' : '') + '">对他人</button>' +
-            '<button data-scope="self" class="' + (scope === 'self' ? 'active' : '') + '">对自己</button>' +
-            '<button data-scope="any" class="' + (scope === 'any' ? 'active' : '') + '">任意</button>' +
+        html += '<div class="xsact-combo-field"><label>谁能使用这个动作</label><div class="xsact-ca-scope" id="xsact-ca-scope">' +
+            '<button data-scope="other" class="' + (scope === 'other' ? 'active' : '') + '">仅他人</button>' +
+            '<button data-scope="self" class="' + (scope === 'self' ? 'active' : '') + '">仅自己</button>' +
+            '<button data-scope="any" class="' + (scope === 'any' ? 'active' : '') + '">皆可</button>' +
             '</div></div>';
-        html += '<div class="xsact-combo-field"><label>身体部位</label><select id="xsact-ca-group" class="xsact-ca-group">';
-        BODY_PARTS.forEach(function(p) {
-            html += '<option value="' + p.group + '"' + (p.group === act.group ? ' selected' : '') + '>' + escapeHtml(p.label) + '（' + p.group + '）</option>';
-        });
-        html += '</select></div>';
-        html += '<div class="xsact-combo-field"><label>对话文本（对他人时显示）</label><textarea id="xsact-ca-dialog" rows="2" placeholder="如：轻轻咬住了 {TargetCharacter} 的耳朵">' + escapeHtml(act.dialog) + '</textarea></div>';
-        html += '<div class="xsact-combo-field"><label>自我对话（对自己时显示，留空则用上方）</label><textarea id="xsact-ca-dialogself" rows="2" placeholder="如：被轻轻咬住了耳朵">' + escapeHtml(act.dialogSelf || '') + '</textarea></div>';
-        html += '<div class="xsact-ca-hint">可用占位符：<code>{SourceCharacter}</code> 自己 · <code>{TargetCharacter}</code> 对方</div>';
+        html += '<div class="xsact-combo-field"><label>身体部位</label>' +
+            '<div class="xsact-ca-part-display" id="xsact-ca-part-display"><span class="xsact-ca-part-label">' + escapeHtml(partLbl) + '（' + group + '）</span><span class="xsact-ca-part-change">点击下图重新选择</span></div>' +
+            '<div class="xsact-ca-part-map" id="xsact-ca-part-map"></div>' +
+            '<input type="hidden" id="xsact-ca-group" value="' + group + '">' +
+            '</div>';
+        html += '<div class="xsact-combo-field"><label>对他人时显示</label><textarea id="xsact-ca-dialog-raw" class="xsact-ca-raw" rows="2">' + escapeHtml(act.dialog) + '</textarea><div id="xsact-ca-dialog" class="xsact-ca-dialog-rich" contenteditable="true" data-placeholder="如：轻轻咬住了 对方 的耳朵"></div></div>';
+        html += '<div class="xsact-combo-field"><label>对自己时显示</label><textarea id="xsact-ca-dialogself-raw" class="xsact-ca-raw" rows="2">' + escapeHtml(act.dialogSelf || '') + '</textarea><div id="xsact-ca-dialogself" class="xsact-ca-dialog-rich" contenteditable="true" data-placeholder="如：被轻轻咬住了耳朵"></div></div>';
+        html += '<div class="xsact-ca-hint">可用占位符（点击插入）：' +
+            '<button class="xsact-ca-token" data-token="{SourceCharacter}">自己</button>' +
+            '<button class="xsact-ca-token" data-token="{TargetCharacter}">对方</button>' +
+            '</div>';
         html += '<div class="xsact-ca-preview" id="xsact-ca-preview"></div>';
         html += '<div class="xsact-combo-actions">' +
             '<button class="xsact-combo-save-btn" id="xsact-ca-save">保存</button>' +
@@ -1214,15 +1569,148 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         html += '</div>';
         listEl.innerHTML = html;
 
+        var lastFocusedInput = listEl.querySelector('#xsact-ca-dialog-raw');
+        function trackFocus(richEl, rawEl) {
+            if (richEl) richEl.addEventListener('focus', function() { lastFocusedInput = rawEl; });
+        }
+        trackFocus(listEl.querySelector('#xsact-ca-name'), listEl.querySelector('#xsact-ca-name'));
+        trackFocus(listEl.querySelector('#xsact-ca-dialog'), listEl.querySelector('#xsact-ca-dialog-raw'));
+        trackFocus(listEl.querySelector('#xsact-ca-dialogself'), listEl.querySelector('#xsact-ca-dialogself-raw'));
+
+        function renderRichText(raw) {
+            return escapeHtml(raw)
+                .replace(/\{SourceCharacter\}/g, '<span class="xsact-token-pill" contenteditable="false" data-token="{SourceCharacter}">自己</span><span class="xsact-zwsp">&#8203;</span>')
+                .replace(/\{TargetCharacter\}/g, '<span class="xsact-token-pill" contenteditable="false" data-token="{TargetCharacter}">对方</span><span class="xsact-zwsp">&#8203;</span>');
+        }
+        function extractRawFromRich(el) {
+            var raw = '';
+            function walk(nodes) {
+                Array.from(nodes).forEach(function(node) {
+                    if (node.nodeType === Node.TEXT_NODE) {
+                        raw += node.textContent;
+                    } else if (node.nodeType === Node.ELEMENT_NODE) {
+                        if (node.classList && node.classList.contains('xsact-token-pill')) {
+                            raw += node.dataset.token;
+                        } else if (node.classList && node.classList.contains('xsact-zwsp')) {
+                            // skip
+                        } else {
+                            walk(node.childNodes);
+                        }
+                    }
+                });
+            }
+            walk(el.childNodes);
+            return raw.replace(/\u200B/g, '');
+        }
+        function syncRichToRaw(richEl) {
+            var rawEl = listEl.querySelector('#' + richEl.id + '-raw');
+            if (!rawEl) return;
+            rawEl.value = extractRawFromRich(richEl);
+        }
+        function syncRawToRich(rawEl) {
+            var richEl = listEl.querySelector('#' + rawEl.id.replace(/-raw$/, ''));
+            if (!richEl) return;
+            richEl.innerHTML = renderRichText(rawEl.value);
+        }
+        function insertTokenPill(token, richEl) {
+            var label = token === '{SourceCharacter}' ? '自己' : '对方';
+            var sel = window.getSelection();
+            var range;
+            if (!sel.rangeCount || !richEl.contains(sel.getRangeAt(0).commonAncestorContainer)) {
+                range = document.createRange();
+                range.selectNodeContents(richEl);
+                range.collapse(false);
+                sel.removeAllRanges();
+                sel.addRange(range);
+            } else {
+                range = sel.getRangeAt(0);
+            }
+            var pill = document.createElement('span');
+            pill.className = 'xsact-token-pill';
+            pill.contentEditable = 'false';
+            pill.dataset.token = token;
+            pill.textContent = label;
+            var zwsp = document.createElement('span');
+            zwsp.className = 'xsact-zwsp';
+            zwsp.textContent = '\u200B';
+            var frag = document.createDocumentFragment();
+            frag.appendChild(pill);
+            frag.appendChild(zwsp);
+            range.deleteContents();
+            range.insertNode(frag);
+            range.setStartAfter(zwsp);
+            range.collapse(true);
+            sel.removeAllRanges();
+            sel.addRange(range);
+            richEl.focus();
+            syncRichToRaw(richEl);
+            refreshPreview();
+        }
+        function insertToken(token) {
+            var rawEl = lastFocusedInput || listEl.querySelector('#xsact-ca-dialog-raw');
+            if (!rawEl) return;
+            var richEl = listEl.querySelector('#' + rawEl.id.replace(/-raw$/, ''));
+            if (!richEl) {
+                var start = rawEl.selectionStart || 0;
+                var end = rawEl.selectionEnd || 0;
+                var before = rawEl.value.substring(0, start);
+                var after = rawEl.value.substring(end);
+                rawEl.value = before + token + after;
+                var pos = start + token.length;
+                rawEl.setSelectionRange(pos, pos);
+                rawEl.focus();
+                rawEl.dispatchEvent(new Event('input', { bubbles: true }));
+                return;
+            }
+            insertTokenPill(token, richEl);
+        }
+
+        syncRawToRich(listEl.querySelector('#xsact-ca-dialog-raw'));
+        syncRawToRich(listEl.querySelector('#xsact-ca-dialogself-raw'));
+
+        listEl.querySelectorAll('.xsact-ca-token').forEach(function(btn) {
+            btn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                insertToken(btn.dataset.token);
+            });
+        });
+
+        var partMap = listEl.querySelector('#xsact-ca-part-map');
+        var partDisplay = listEl.querySelector('#xsact-ca-part-display');
+        var groupInput = listEl.querySelector('#xsact-ca-group');
+        function updatePartLabel(g) {
+            var p = BODY_PARTS.find(function(x) { return x.group === g; }) || {};
+            var label = p.label || g;
+            if (partDisplay) partDisplay.querySelector('.xsact-ca-part-label').textContent = label + '（' + g + '）';
+            if (groupInput) groupInput.value = g;
+        }
+        if (partMap) {
+            renderBodyMapMini(partMap, group, function(newGroup, newLabel) {
+                updatePartLabel(newGroup);
+                refreshPreview();
+            });
+        }
+
         function refreshPreview() {
             var nm = (listEl.querySelector('#xsact-ca-name') || {}).value || '动作';
-            var dlg = (listEl.querySelector('#xsact-ca-dialog') || {}).value || nm;
+            var dlg = (listEl.querySelector('#xsact-ca-dialog-raw') || {}).value || nm;
+            var dlgSelf = (listEl.querySelector('#xsact-ca-dialogself-raw') || {}).value || '';
             var sc = (listEl.querySelector('#xsact-ca-scope') || {}).querySelector('.active');
-            var isSelf = sc && sc.dataset.scope === 'self';
+            var scope = sc ? sc.dataset.scope : 'other';
             var src = (Player && (Player.Nickname || Player.Name)) || '某人';
             var tgt = (charObj && (charObj.Nickname || charObj.Name)) || '对方';
-            var text = dlg.replace(/\{SourceCharacter\}/g, src).replace(/\{TargetCharacter\}/g, tgt);
-            var preview = isSelf ? (src + ' ' + text) : (src + ' 对 ' + tgt + ' ' + text);
+            // 根据“谁能使用”显示对应文本，any 时双行展示两种情形
+            var preview;
+            if (scope === 'self') {
+                var textSelf = (dlgSelf.trim() ? dlgSelf : dlg).replace(/\{SourceCharacter\}/g, src).replace(/\{TargetCharacter\}/g, src);
+                preview = textSelf; // 自己对自己，文本里已含角色，直接显示完整句子
+            } else if (scope === 'any') {
+                var textOther = dlg.replace(/\{SourceCharacter\}/g, src).replace(/\{TargetCharacter\}/g, tgt);
+                var textSelf = (dlgSelf.trim() ? dlgSelf : dlg).replace(/\{SourceCharacter\}/g, src).replace(/\{TargetCharacter\}/g, src);
+                preview = '对他人：' + textOther + '\n对自己：' + textSelf;
+            } else {
+                preview = dlg.replace(/\{SourceCharacter\}/g, src).replace(/\{TargetCharacter\}/g, tgt);
+            }
             var pv = listEl.querySelector('#xsact-ca-preview');
             if (pv) pv.textContent = preview;
         }
@@ -1234,26 +1722,31 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                 refreshPreview();
             });
         });
-        ['#xsact-ca-name', '#xsact-ca-dialog', '#xsact-ca-dialogself'].forEach(function(sel) {
+        ['#xsact-ca-name', '#xsact-ca-dialog-raw', '#xsact-ca-dialogself-raw'].forEach(function(sel) {
             var el = listEl.querySelector(sel);
             if (el) el.addEventListener('input', refreshPreview);
         });
-        var groupSel = listEl.querySelector('#xsact-ca-group');
-        if (groupSel) groupSel.addEventListener('change', refreshPreview);
+        ['#xsact-ca-dialog', '#xsact-ca-dialogself'].forEach(function(sel) {
+            var el = listEl.querySelector(sel);
+            if (el) el.addEventListener('input', function() {
+                syncRichToRaw(el);
+                refreshPreview();
+            });
+        });
         refreshPreview();
 
         var saveBtn = listEl.querySelector('#xsact-ca-save');
         if (saveBtn) saveBtn.addEventListener('click', function() {
             var nm = (listEl.querySelector('#xsact-ca-name') || {}).value || '';
-            var dlg = (listEl.querySelector('#xsact-ca-dialog') || {}).value || '';
-            var dlgSelf = (listEl.querySelector('#xsact-ca-dialogself') || {}).value || '';
+            var dlg = (listEl.querySelector('#xsact-ca-dialog-raw') || {}).value || '';
+            var dlgSelf = (listEl.querySelector('#xsact-ca-dialogself-raw') || {}).value || '';
             var sc = (listEl.querySelector('#xsact-ca-scope') || {}).querySelector('.active');
             var gp = (listEl.querySelector('#xsact-ca-group') || {}).value || 'ItemMouth';
             if (!nm.trim()) { toast('请填写动作名称', '#FF5C5C'); return; }
             if (!dlg.trim()) { toast('请填写对话文本', '#FF5C5C'); return; }
             var existing = getCustom(act.id);
             if (existing) caUnregister(existing);
-            var updated = { id: act.id, name: nm.trim(), scope: (sc ? sc.dataset.scope : 'other'), group: gp, dialog: dlg, dialogSelf: dlgSelf, createdAt: act.createdAt || Date.now() };
+            var updated = { id: act.id, name: nm.trim(), scope: (sc ? sc.dataset.scope : 'other'), group: gp, dialog: dlg, dialogSelf: dlgSelf, createdAt: act.createdAt || Date.now(), source: act.source || 'native', visible: typeof act.visible === 'boolean' ? act.visible : true, echoName: act.echoName || null, echoNames: Array.isArray(act.echoNames) ? act.echoNames.slice() : [] };
             upsertCustom(updated);
             state.editingCustomId = null;
             updateCustomActionPanel(charObj);
@@ -1279,14 +1772,14 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         if (ok) toast('执行：' + act.name, '#FF5C7A');
     }
 
-    /** 从 e宝/回声(echo-activity-ext) 导入动作数据 */
+    /** 从 echo/回声(echo-activity-ext) 导入动作数据 */
     function importCustomFromEcho() {
         try {
             var ext = Player && Player.ExtensionSettings;
             if (!ext) { toast('读取扩展设置失败', '#FF5C5C'); return; }
             var echoKey = Object.keys(ext).find(function(k) { return k.indexOf('ECHO') === 0; });
             if (!echoKey || !ext[echoKey] || !ext[echoKey]['动作数据']) {
-                toast('未找到 e宝/回声 的动作数据', '#FF5C5C'); return;
+                toast('未找到 echo/回声 的动作数据', '#FF5C5C'); return;
             }
             var data = ext[echoKey]['动作数据'];
             var keys = Object.keys(data);
@@ -1298,21 +1791,45 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                 var hasTargetSelf = !!item.TargetSelf;
                 var scope = (hasTarget && hasTargetSelf) ? 'any' : hasTargetSelf ? 'self' : 'other';
                 var group = item.Target || item.TargetSelf || 'ItemMouth';
+                var dialog = item.Dialog || item.Name || '';
+                var dialogSelf = item.DialogSelf || '';
+                // echo/回声 使用裸 SourceCharacter/TargetCharacter 占位符；统一成花括号格式
+                function normalizeEchoPlaceholder(s) { return typeof s === 'string' ? s.replace(/SourceCharacter/g, '{SourceCharacter}').replace(/TargetCharacter/g, '{TargetCharacter}') : s; }
+                // 解析 echo 条目的显示名与真实 Activity Name：key / item.Name 可能是中文显示名 ↔ 原始名 任意组合
+                var resolved = caResolveEchoNames(k, item.Name);
+                var displayName = resolved.displayName;
+                var rawName = resolved.rawName;
+                // 在注册表里找到这个 echo 动作的真实 Activity.Name（通常带随机后缀，如 笨蛋笨Luzi_xw58d）
+                var foundRawNames = caFindEchoNamesInRegistry(item, k, group);
+                // 如果 rawName 看起来就是原始 Activity 名，也直接加进去
+                if (caLooksLikeRawActivityName(rawName)) foundRawNames.add(rawName);
+                if (caLooksLikeRawActivityName(k) && k !== rawName) foundRawNames.add(k);
+                var primaryEchoName = foundRawNames.values().next().value || rawName;
                 var ca = {
                     id: caNewId(),
-                    name: item.Name,
+                    name: displayName,
                     scope: scope,
                     group: group,
-                    dialog: item.Dialog || item.Name,
-                    dialogSelf: item.DialogSelf || '',
-                    createdAt: Date.now()
+                    dialog: normalizeEchoPlaceholder(dialog),
+                    dialogSelf: normalizeEchoPlaceholder(dialogSelf),
+                    createdAt: Date.now(),
+                    source: 'echo',
+                    visible: true,
+                    echoName: primaryEchoName, // 记录真实 echo 注册名，用于后续启动时重新屏蔽
+                    echoNames: Array.from(foundRawNames) // 记录所有可能的原始名，防止漏网
                 };
                 upsertCustom(ca);
+                foundRawNames.forEach(caSuppressEchoName);
+                caSuppressEchoName(displayName);
+                caSuppressEchoName(rawName);
                 imported++;
             });
-            toast('已从 e宝/回声 导入 ' + imported + ' 个动作', '#46E0A0');
+            // 导入完成后，立即屏蔽 echo 端已存在的同名原始动作，并刷新动作面板
+            caRemoveSuppressedEchoActivities();
+            updateActionPanel(state.selectedTarget, state.selectedPart);
+            toast('已从 echo/回声 导入 ' + imported + ' 个动作', '#46E0A0');
         } catch (e) {
-            console.warn('[XSAct-QA] 导入 e宝/回声 动作失败:', e.message);
+            console.warn('[XSAct-QA] 导入 echo/回声 动作失败:', e.message);
             toast('导入失败：' + e.message, '#FF5C5C');
         }
     }
@@ -1337,6 +1854,37 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
 
     /** 启动时重新注册所有已存自定义动作到 BC（使本会话内可执行） */
     function registerAllCustomActions() {
+        // 清理：移除 BC 注册表中不在当前自定义动作列表里的 XSQAct_ / XSAct_CA_ 残留条目
+        // （防止旧版本残留、重复注入或重复注册导致动作面板显示 CA_xxx 裸 ID；
+        //   XSAct_CA_ 为早期版本前缀，部分第三方 mod（小酥的動作拓展）会遍历 XSAct* 活动，
+        //   旧前缀与其冲突导致原生动作界面崩溃，升级后必须清除。）
+        try {
+            var fam = (Player && Player.AssetFamily) || 'Female3DCG';
+            var acts = AssetAllActivities(fam);
+            var validNames = new Set();
+            state.customActions.forEach(function(a) { validNames.add(caActivityName(a)); });
+            var OLD_PREFIXES = ['XSAct_CA_', CA_PREFIX];
+            var isStale = function(name) {
+                return OLD_PREFIXES.some(function(p) { return name.indexOf(p) === 0; });
+            };
+            if (Array.isArray(acts)) {
+                for (var i = acts.length - 1; i >= 0; i--) {
+                    var a = acts[i];
+                    if (a && a.Name && isStale(a.Name) && !validNames.has(a.Name)) {
+                        acts.splice(i, 1);
+                    }
+                }
+            }
+            // 同步清理排序索引数组中的残留条目
+            if (Array.isArray(ActivityFemale3DCGOrdering)) {
+                for (var j = ActivityFemale3DCGOrdering.length - 1; j >= 0; j--) {
+                    var nm = ActivityFemale3DCGOrdering[j];
+                    if (nm && isStale(nm) && !validNames.has(nm)) {
+                        ActivityFemale3DCGOrdering.splice(j, 1);
+                    }
+                }
+            }
+        } catch (e) { console.warn('[XSAct-QA] 清理自定义动作残留失败:', e.message); }
         state.customActions.forEach(function(act) { caRegister(act); });
     }
 
@@ -1703,7 +2251,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
       <div class="xsact-qa-mode-tabs">\
         <button class="xsact-mode-tab active" data-mode="part" title="单部位动作：点人物部位后直接触发">' + svgIcon('target', 14) + '<span>动作</span></button>\
         <button class="xsact-mode-tab" data-mode="combo" title="组合动作：手动拼装多部位动作并一键执行">' + svgIcon('layers', 14) + '<span>组合动作</span></button>\
-        <button class="xsact-mode-tab" data-mode="custom" title="我的动作：创建/管理自定义动作（替代 e宝/回声）。当前为测试版(Beta)">' + svgIcon('star', 14) + '<span>我的动作</span><span class="xsact-beta-badge">测试版</span></button>\
+        <button class="xsact-mode-tab" data-mode="custom" title="我的动作：创建/管理自定义动作（替代 echo/回声）。当前为测试版(Beta)">' + svgIcon('star', 14) + '<span>我的动作</span><span class="xsact-beta-badge">测试版</span></button>\
       </div>\
       <div class="xsact-qa-panel-body" id="xsact-action-list">\
         <div class="xsact-qa-empty">点击左侧 ◀ 按钮选择人物和部位</div>\
@@ -1716,6 +2264,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
     <button class="xsact-qa-mini-btn xsact-toggle-pill" id="xsact-fav-btn" title="收藏模式：开启后点击动作会加入/取消收藏">' + svgIcon('star', 14) + '<span>收藏</span><span class="xsact-pill-dot"></span></button>\
     <button class="xsact-qa-mini-btn" id="xsact-fav-clear-btn" title="清空全部收藏动作">' + svgIcon('trash', 14) + '</button>\
     <button class="xsact-qa-mini-btn" id="xsact-x3-btn" title="连续3次">' + svgIcon('bolt', 14) + '<span>×3</span></button>\
+    <span class="xsact-version-tag" title="当前插件版本">v' + VERSION + '</span>\
   </div>\
   <div class="xsact-qa-state.presets-bar" id="xsact-state.presets-bar"></div>\
   <div class="xsact-resize-handle" id="xsact-resize-handle" title="拖动缩放面板">' + svgIcon('resize', 14) + '</div>\
@@ -2228,6 +2777,11 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
     /* ===== 14. 面板渲染与模式 ===== */
     function renderPanel() {
         if (!state.actionPanelEl) return;
+        var listEl = state.actionPanelEl.querySelector('#xsact-action-list');
+        if (listEl) {
+            listEl.classList.toggle('xsact-custom-mode', state.panelMode === 'custom');
+            listEl.classList.toggle('xsact-combo-mode', state.panelMode === 'combo');
+        }
         updateAllButtonVisual();
         updateFavButtonVisual();
         if (!state.selectedTarget) {
@@ -2455,6 +3009,8 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             user:     '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
             'triangle-left': '<path d="M18 5L7 12l11 7z" fill="currentColor" stroke="none"/>',
             settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
+            download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>',
+            upload:   '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>',
             sun:      '<circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>',
             moon:     '<path d="M21 12.79A9 9 0 1 1 11.21 3a7 7 0 0 0 9.79 9.79z"/>'
         };
@@ -2465,75 +3021,88 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
     }
 
     function updateActionPanel(charObj, partGroup) {
-        // 用模块持有的面板引用查询，避免重复注入时 getElementById 命中隐藏旧面板
-        if (!state.actionPanelEl) return;
-        var titleEl = state.actionPanelEl.querySelector('#xsact-panel-title');
-        var listEl = state.actionPanelEl.querySelector('#xsact-action-list');
-        var allBtn = state.actionPanelEl.querySelector('#xsact-all-btn');
+        try {
+            // 用模块持有的面板引用查询，避免重复注入时 getElementById 命中隐藏旧面板
+            if (!state.actionPanelEl) return;
+            var titleEl = state.actionPanelEl.querySelector('#xsact-panel-title');
+            var listEl = state.actionPanelEl.querySelector('#xsact-action-list');
+            var allBtn = state.actionPanelEl.querySelector('#xsact-all-btn');
 
-        if (!titleEl || !listEl) return;
-
-        var partLabel = BODY_PARTS.find(function(p) { return p.group === partGroup; });
-        titleEl.textContent = (characterDisplayName(charObj) || '?') + ' → ' + (partLabel ? partLabel.label : partGroup);
-
-        var actions = getActionsForPart(partGroup, charObj);
-        if (actions.length === 0) {
-            listEl.innerHTML = '<div class="xsact-qa-empty">该部位暂无可用动作</div>';
-            if (allBtn) allBtn.disabled = true;
-            return;
-        }
-
-        if (allBtn) allBtn.disabled = false;
-        var html = '';
-        var isEditing = !!state.editingComboId;
-        actions.forEach(function(act) {
-            var lbl = getActivityLabel(act.Name, partGroup);
-            var isFav = state.favorites.indexOf(partGroup + '|' + act.Name) !== -1;
-            html += '<div class="xsact-action-row' + (isEditing ? ' editing' : '') + '" data-name="' + act.Name + '">' +
-                '<button class="xsact-action-btn' + (isFav ? ' fav' : '') + '" data-name="' + act.Name + '" title="' + act.Name + '">' +
-                '<span class="xsact-action-label">' + lbl + '</span>' +
-                (isFav ? '<span class="xsact-action-star">' + svgIcon('starFill', 13) + '</span>' : '') +
-                '</button>';
-            if (isEditing) {
-                html += '<button class="xsact-add-to-combo" title="加入当前组合">' + svgIcon('plus', 16) + '</button>';
+            if (!titleEl || !listEl) return;
+            if (!charObj || !partGroup) {
+                listEl.innerHTML = '<div class="xsact-qa-empty">请先在左侧选择人物和部位</div>';
+                return;
             }
-            html += '</div>';
-        });
-        listEl.innerHTML = html;
 
-        // 绑定动作按钮点击：收藏模式下加入/取消收藏，否则执行
-        listEl.querySelectorAll('.xsact-action-btn').forEach(function(btn) {
-            btn.addEventListener('click', function(e) {
-                e.stopPropagation(); // 避免冒泡到面板导致左侧人物浮层关闭
-                var actName = btn.dataset.name;
-                var act = actions.find(function(a) { return a.Name === actName; }) || { Name: actName, Item: null };
-                state.selectedAction = actName;
-                state.selectedActionItem = act.Item || null;
-                listEl.querySelectorAll('.xsact-action-btn').forEach(b => b.classList.remove('sel'));
-                btn.classList.add('sel');
+            var partLabel = BODY_PARTS.find(function(p) { return p.group === partGroup; });
+            titleEl.textContent = (characterDisplayName(charObj) || '?') + ' → ' + (partLabel ? partLabel.label : partGroup);
 
-                if (state.favModeActive) {
-                    toggleFavoriteAction(partGroup, actName, btn);
-                    return;
+            var actions = getActionsForPart(partGroup, charObj);
+            if (!Array.isArray(actions) || actions.length === 0) {
+                listEl.innerHTML = '<div class="xsact-qa-empty">该部位暂无可用动作</div>';
+                if (allBtn) allBtn.disabled = true;
+                return;
+            }
+
+            if (allBtn) allBtn.disabled = false;
+            var html = '';
+            var isEditing = !!state.editingComboId;
+            actions.forEach(function(act) {
+                if (!act || !act.Name) return;
+                var lbl = getActivityLabel(act.Name, partGroup);
+                var isFav = state.favorites.indexOf(partGroup + '|' + act.Name) !== -1;
+                html += '<div class="xsact-action-row' + (isEditing ? ' editing' : '') + '" data-name="' + escapeHtml(act.Name) + '">' +
+                    '<button class="xsact-action-btn' + (isFav ? ' fav' : '') + '" data-name="' + escapeHtml(act.Name) + '" title="' + escapeHtml(act.Name) + '">' +
+                    '<span class="xsact-action-label">' + escapeHtml(lbl) + '</span>' +
+                    (isFav ? '<span class="xsact-action-star">' + svgIcon('starFill', 13) + '</span>' : '') +
+                    '</button>';
+                if (isEditing) {
+                    html += '<button class="xsact-add-to-combo" title="加入当前组合">' + svgIcon('plus', 16) + '</button>';
                 }
-
-                if (state.allModeActive) executeActionAll();
-                else { executeAction(charObj, actName, state.selectedActionItem); toast('已执行：' + getActivityLabel(actName, partGroup), '#46E0A0'); }
+                html += '</div>';
             });
-        });
+            listEl.innerHTML = html || '<div class="xsact-qa-empty">该部位暂无可用动作</div>';
 
-        // 绑定「加入组合」点击（编辑模式）
-        if (isEditing) {
-            listEl.querySelectorAll('.xsact-add-to-combo').forEach(function(btn) {
+            // 绑定动作按钮点击：收藏模式下加入/取消收藏，否则执行
+            listEl.querySelectorAll('.xsact-action-btn').forEach(function(btn) {
                 btn.addEventListener('click', function(e) {
                     e.stopPropagation(); // 避免冒泡到面板导致左侧人物浮层关闭
-                    var actName = btn.parentNode.dataset.name;
-                    var act = actions.find(function(a) { return a.Name === actName; }) || { Name: actName, Item: null, translatedName: actName };
-                    var lbl = act.translatedName || getActivityLabel(act.Name, partGroup);
-                    addComboItem(state.editingComboId, partGroup, act.Name, lbl, act.Item || null);
-                    toast('已加入「' + getCombo(state.editingComboId).name + '」', '#46E0A0');
+                    var actName = btn.dataset.name;
+                    var act = actions.find(function(a) { return a && a.Name === actName; }) || { Name: actName, Item: null };
+                    state.selectedAction = actName;
+                    state.selectedActionItem = act.Item || null;
+                    listEl.querySelectorAll('.xsact-action-btn').forEach(b => b.classList.remove('sel'));
+                    btn.classList.add('sel');
+
+                    if (state.favModeActive) {
+                        toggleFavoriteAction(partGroup, actName, btn);
+                        return;
+                    }
+
+                    if (state.allModeActive) executeActionAll();
+                    else { executeAction(charObj, actName, act.Item || null); toast('已执行：' + getActivityLabel(actName, partGroup), '#46E0A0'); }
                 });
             });
+
+            // 绑定「加入组合」点击（编辑模式）
+            if (isEditing) {
+                listEl.querySelectorAll('.xsact-add-to-combo').forEach(function(btn) {
+                    btn.addEventListener('click', function(e) {
+                        e.stopPropagation(); // 避免冒泡到面板导致左侧人物浮层关闭
+                        var actName = btn.parentNode.dataset.name;
+                        var act = actions.find(function(a) { return a && a.Name === actName; }) || { Name: actName, Item: null, translatedName: actName };
+                        var lbl = act.translatedName || getActivityLabel(act.Name, partGroup);
+                        addComboItem(state.editingComboId, partGroup, act.Name, lbl, act.Item || null);
+                        toast('已加入「' + getCombo(state.editingComboId).name + '」', '#46E0A0');
+                    });
+                });
+            }
+        } catch (panelErr) {
+            console.error('[XSAct-QA] updateActionPanel 渲染失败:', panelErr);
+            if (state.actionPanelEl) {
+                var listEl = state.actionPanelEl.querySelector('#xsact-action-list');
+                if (listEl) listEl.innerHTML = '<div class="xsact-qa-empty" style="color:#FF8FA6">动作列表加载出错，请刷新或反馈。<br><small>' + escapeHtml(panelErr.message) + '</small></div>';
+            }
         }
     }
 
@@ -3082,41 +3651,92 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             '.xsact-combo-cancel-btn:hover{background:var(--xs-border-strong);}',
 
             /* ===== 自定义动作（我的动作 tab） ===== */
-            '.xsact-ca-toolbar{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:10px;}',
-            '.xsact-ca-search{flex:1;min-width:120px;padding:8px 10px;border-radius:7px;border:1px solid var(--xs-border);background:var(--xs-input-bg);color:var(--xs-text);font-size:13px;}',
-            '.xsact-ca-toolbar button{display:flex;align-items:center;gap:5px;padding:8px 11px;border-radius:7px;border:1px solid var(--xs-border);background:var(--xs-btn-bg);color:var(--xs-text-dim);cursor:pointer;font-size:12px;transition:background .15s,border-color .15s,color .15s;}',
-            '.xsact-ca-toolbar button:hover{background:var(--xs-hover);border-color:var(--xs-border-strong);color:var(--xs-text);}',
-            '.xsact-ca-new{background:rgba(255,92,122,0.14);border-color:rgba(255,92,122,0.45);color:#FF8FA6;}',
-            '.xsact-ca-new:hover{background:rgba(255,92,122,0.24);color:#FFB3C6;}',
-            '.xsact-ca-list{display:flex;flex-direction:column;gap:8px;}',
-            '.xsact-ca-card{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;border-radius:9px;background:var(--xs-card-bg);border:1px solid var(--xs-border);transition:border-color .15s,background .15s;}',
-            '.xsact-ca-card:hover{border-color:var(--xs-border-strong);background:var(--xs-hover);}',
-            '.xsact-ca-info{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0;}',
-            '.xsact-ca-name{font-size:13px;color:var(--xs-text);font-weight:600;}',
-            '.xsact-ca-part{font-size:11px;color:var(--xs-text-dim);opacity:.8;}',
-            '.xsact-ca-badge{font-size:10px;padding:2px 7px;border-radius:20px;font-weight:600;}',
+            '#xsact-action-list.xsact-custom-mode{display:flex;flex-direction:column;gap:12px;padding:10px 12px;}',
+            '#xsact-action-list.xsact-custom-mode > *{width:100%;min-width:0;}',
+            '.xsact-ca-view{display:flex;flex-direction:column;gap:12px;width:100%;min-width:0;padding:2px 0;}',
+
+            '.xsact-ca-toolbar{display:flex;align-items:center;gap:8px;width:100%;min-width:0;}',
+            '.xsact-ca-search{flex:1;min-width:0;padding:9px 12px;border-radius:8px;border:1px solid var(--xs-border);background:var(--xs-input-bg);color:var(--xs-text);font-size:13px;}',
+            '.xsact-ca-search:focus{outline:none;border-color:var(--xs-accent);}',
+            '.xsact-ca-toolbar-btns{display:flex;gap:6px;flex-shrink:0;}',
+            '.xsact-ca-toolbar-btns button{display:flex;align-items:center;justify-content:center;gap:5px;width:34px;height:34px;padding:0;border-radius:8px;border:1px solid var(--xs-border);background:var(--xs-btn-bg);color:var(--xs-text-dim);cursor:pointer;font-size:12px;transition:background .15s,border-color .15s,color .15s;}',
+            '.xsact-ca-toolbar-btns button:hover{background:var(--xs-hover);border-color:var(--xs-border-strong);color:var(--xs-text);}',
+            '.xsact-ca-toolbar-btns button.xsact-ca-new{width:auto;padding:0 12px;background:rgba(255,92,122,0.14);border-color:rgba(255,92,122,0.45);color:#FF8FA6;}',
+            '.xsact-ca-toolbar-btns button.xsact-ca-new:hover{background:rgba(255,92,122,0.24);color:#FFB3C6;}',
+
+            '.xsact-ca-beta{font-size:11px;line-height:1.55;color:var(--xs-accent-text);background:rgba(var(--xs-accent-rgb),0.10);border:1px solid rgba(var(--xs-accent-rgb),0.30);border-left:3px solid var(--xs-accent);border-radius:8px;padding:10px 12px;}',
+
+            '.xsact-ca-list{display:flex;flex-direction:column;gap:10px;width:100%;}',
+            '.xsact-ca-card{display:grid;grid-template-columns:1fr auto;align-items:center;gap:12px;padding:12px 14px;border-radius:10px;background:var(--xs-card-bg);border:1px solid var(--xs-border);transition:border-color .15s,background .15s,transform .1s;min-width:0;}',
+            '.xsact-ca-card:hover{border-color:var(--xs-border-strong);background:var(--xs-hover);transform:translateY(-1px);}',
+            '.xsact-ca-info{display:flex;flex-direction:column;gap:5px;min-width:0;overflow:hidden;}',
+            '.xsact-ca-title{display:flex;align-items:center;gap:8px;min-width:0;}',
+            '.xsact-ca-name{font-size:14px;font-weight:600;color:var(--xs-text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
+            '.xsact-ca-meta{display:flex;align-items:center;gap:8px;min-width:0;}',
+            '.xsact-ca-part{font-size:11px;color:var(--xs-text-dim);opacity:.85;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
+            '.xsact-ca-badge{flex-shrink:0;font-size:10px;padding:3px 8px;border-radius:20px;font-weight:600;letter-spacing:0.02em;}',
             '.xsact-ca-badge.other{background:rgba(90,160,255,0.16);color:#8FB8FF;}',
             '.xsact-ca-badge.self{background:rgba(70,224,160,0.16);color:#5FE3B0;}',
             '.xsact-ca-badge.any{background:rgba(255,92,122,0.16);color:#FF8FA6;}',
+            '.xsact-ca-src{flex-shrink:0;font-size:10px;padding:2px 7px;border-radius:20px;font-weight:600;letter-spacing:0.02em;}',
+            '.xsact-ca-src.echo{background:rgba(255,200,90,0.16);color:#FFD87A;}',
+            '.xsact-ca-src.native{background:rgba(160,140,255,0.16);color:#C4B8FF;}',
+            '.xsact-ca-card.is-hidden{opacity:.55;border-style:dashed;}',
+            '.xsact-ca-toggle{display:flex;align-items:center;gap:7px;cursor:pointer;font-size:11px;color:var(--xs-text-dim);}',
+            '.xsact-ca-toggle input{position:absolute;opacity:0;width:0;height:0;}',
+            '.xsact-ca-toggle-track{width:34px;height:18px;border-radius:999px;background:var(--xs-border-strong);position:relative;transition:background .2s;}',
+            '.xsact-ca-toggle-track::before{content:"";position:absolute;left:2px;top:2px;width:14px;height:14px;border-radius:50%;background:#fff;transition:transform .2s;}',
+            '.xsact-ca-toggle input:checked + .xsact-ca-toggle-track{background:var(--xs-accent);}',
+            '.xsact-ca-toggle input:checked + .xsact-ca-toggle-track::before{transform:translateX(16px);}',
+            '.xsact-ca-toggle input:focus + .xsact-ca-toggle-track{box-shadow:0 0 0 2px rgba(var(--xs-accent-rgb),0.35);}',
             '.xsact-beta-badge{font-size:9px;font-weight:700;line-height:1;padding:2px 5px;border-radius:6px;margin-left:5px;color:#FFD27A;background:rgba(255,180,60,0.16);border:1px solid rgba(255,180,60,0.4);vertical-align:middle;white-space:nowrap;}',
-            '.xsact-ca-beta{font-size:11px;line-height:1.5;color:var(--xs-accent-text);background:rgba(var(--xs-accent-rgb),0.10);border:1px solid rgba(var(--xs-accent-rgb),0.30);border-radius:7px;padding:6px 9px;margin-bottom:10px;}',
-            '.xsact-ca-btns{display:flex;gap:5px;flex-shrink:0;}',
-            '.xsact-ca-btns button{width:30px;height:30px;display:flex;align-items:center;justify-content:center;border-radius:7px;border:1px solid var(--xs-border);background:var(--xs-btn-bg);color:var(--xs-text-dim);cursor:pointer;transition:background .15s,color .15s,border-color .15s;}',
+            '.xsact-ca-btns{display:flex;gap:6px;flex-shrink:0;}',
+            '.xsact-ca-btns button{width:32px;height:32px;display:flex;align-items:center;justify-content:center;border-radius:8px;border:1px solid var(--xs-border);background:var(--xs-btn-bg);color:var(--xs-text-dim);cursor:pointer;transition:background .15s,color .15s,border-color .15s;}',
             '.xsact-ca-btns button:hover{background:var(--xs-hover);color:var(--xs-text);border-color:var(--xs-border-strong);}',
             '.xsact-ca-run:hover{background:rgba(70,224,160,0.16);color:#5FE3B0;border-color:rgba(70,224,160,0.5);}',
             '.xsact-ca-delete:hover{background:rgba(255,92,92,0.16);color:#FF9C9C;border-color:rgba(255,92,92,0.5);}',
-            '.xsact-ca-editor{display:flex;flex-direction:column;gap:11px;}',
-            '.xsact-ca-scope{display:flex;gap:6px;}',
-            '.xsact-ca-scope button{flex:1;padding:8px;border-radius:7px;border:1px solid var(--xs-border);background:var(--xs-btn-bg);color:var(--xs-text-dim);cursor:pointer;font-size:12px;transition:all .15s;}',
-            '.xsact-ca-scope button.active{background:rgba(255,92,122,0.18);border-color:rgba(255,92,122,0.5);color:#FFB3C6;}',
-            '.xsact-ca-group{width:100%;padding:8px 10px;border-radius:7px;border:1px solid var(--xs-border);background:var(--xs-input-bg);color:var(--xs-text);font-size:13px;}',
-            '.xsact-ca-editor textarea{width:100%;padding:8px 10px;border-radius:7px;border:1px solid var(--xs-border);background:var(--xs-input-bg);color:var(--xs-text);font-size:13px;resize:vertical;font-family:inherit;}',
-            '.xsact-ca-hint{font-size:11px;color:var(--xs-text-dim);}',
-            '.xsact-ca-hint code{background:var(--xs-input-bg);padding:1px 5px;border-radius:4px;color:#FFB3C6;font-size:11px;}',
-            '.xsact-ca-preview{padding:10px 12px;border-radius:8px;background:rgba(255,92,122,0.08);border:1px dashed rgba(255,92,122,0.35);color:var(--xs-text);font-size:13px;line-height:1.5;}',
-            '.xsact-ca-del-btn{background:rgba(255,92,92,0.14);color:#FF9C9C;}',
-            '.xsact-ca-del-btn:hover{background:rgba(255,92,92,0.24);}',
+            '.xsact-ca-empty{padding:36px 14px;}',
 
+            '.xsact-ca-editor{display:flex;flex-direction:column;gap:14px;width:100%;min-width:0;}',
+            '.xsact-ca-editor .xsact-combo-field{display:flex;flex-direction:column;gap:7px;padding:13px 14px;background:var(--xs-panel-bg-2);border:1px solid var(--xs-border);border-radius:10px;}',
+            '.xsact-ca-editor .xsact-combo-field label{font-size:11px;font-weight:600;color:var(--xs-accent-text);letter-spacing:0.04em;text-transform:uppercase;}',
+            '.xsact-ca-editor .xsact-combo-field input,.xsact-ca-editor .xsact-combo-field textarea,.xsact-ca-editor .xsact-combo-field select,.xsact-ca-editor .xsact-combo-field .xsact-ca-dialog-rich{width:100%;padding:10px 12px;border-radius:8px;border:1px solid var(--xs-border-strong);background:var(--xs-input-bg);color:var(--xs-text);font-size:13px;box-sizing:border-box;font-family:inherit;}',
+            '.xsact-ca-editor .xsact-combo-field input:focus,.xsact-ca-editor .xsact-combo-field textarea:focus,.xsact-ca-editor .xsact-combo-field select:focus,.xsact-ca-editor .xsact-combo-field .xsact-ca-dialog-rich:focus{outline:none;border-color:var(--xs-accent);}',
+            '.xsact-ca-editor textarea{resize:vertical;min-height:54px;line-height:1.5;}',
+            '.xsact-ca-scope{display:flex;gap:8px;}',
+            '.xsact-ca-scope button{flex:1;padding:9px 10px;border-radius:8px;border:1px solid var(--xs-border);background:var(--xs-btn-bg);color:var(--xs-text-dim);cursor:pointer;font-size:12px;font-weight:500;transition:all .15s;}',
+            '.xsact-ca-scope button:hover{background:var(--xs-hover);border-color:var(--xs-border-strong);color:var(--xs-text);}',
+            '.xsact-ca-scope button.active{background:rgba(255,92,122,0.18);border-color:rgba(255,92,122,0.55);color:#FFB3C6;font-weight:600;}',
+            '.xsact-ca-hint{font-size:11px;color:var(--xs-text-dim);line-height:1.5;display:flex;align-items:center;flex-wrap:wrap;gap:6px;min-height:0;}',
+            '.xsact-ca-hint code,.xsact-ca-token{background:var(--xs-input-bg);padding:3px 8px;border-radius:5px;color:#FFB3C6;font-size:11px;border:1px solid var(--xs-border);cursor:pointer;transition:background .15s,border-color .15s,color .15s;white-space:nowrap;}',
+            '.xsact-ca-token:hover{background:rgba(255,92,122,0.14);border-color:rgba(255,92,122,0.45);color:#FFD6DF;}',
+            '.xsact-ca-part-display{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 12px;border-radius:8px;border:1px solid var(--xs-border-strong);background:var(--xs-input-bg);cursor:pointer;transition:background .15s,border-color .15s;}',
+            '.xsact-ca-part-display:hover{background:var(--xs-hover);border-color:var(--xs-accent);}',
+            '.xsact-ca-part-label{font-size:13px;color:var(--xs-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}',
+            '.xsact-ca-part-change{font-size:11px;color:var(--xs-text-dim);white-space:nowrap;flex-shrink:0;}',
+            '.xsact-ca-part-map{height:min(240px,42vh);min-height:160px;max-height:300px;border-radius:10px;border:1px solid var(--xs-border);background:var(--xs-panel-bg-2);padding:10px;display:flex;flex-direction:column;align-items:stretch;gap:6px;overflow:hidden;box-sizing:border-box;}',
+            '.xsact-body-mini-svg{flex:1;min-height:0;width:100%;height:100%;overflow:visible;filter:var(--xs-zone-filter);}',
+            '.xsact-body-mini-hint{font-size:11px;color:var(--xs-text-dim);text-align:center;padding:5px 8px;border-radius:6px;background:var(--xs-panel-bg);border:1px solid var(--xs-border);white-space:nowrap;flex-shrink:0;}',
+            '.xsact-ca-part-map .xsact-body-part-zone{fill:var(--xs-zone-fill);stroke:var(--xs-zone-stroke);stroke-width:1.2;cursor:pointer;transition:fill .12s,stroke .12s,stroke-width .12s,filter .12s;pointer-events:all;vector-effect:non-scaling-stroke;}',
+            '.xsact-ca-part-map .xsact-body-part-zone:hover,.xsact-ca-part-map .xsact-body-part-zone.hover{fill:var(--xs-zone-fill-hover);stroke:var(--xs-zone-stroke-hover);stroke-width:2.5;filter:drop-shadow(0 0 8px rgba(var(--xs-accent-rgb), 0.6));}',
+            '.xsact-ca-part-map .xsact-body-part-zone.selected{fill:var(--xs-zone-fill-selected);stroke:var(--xs-zone-stroke-selected);stroke-width:2.5;filter:drop-shadow(0 0 10px rgba(var(--xs-accent-rgb), 0.55));}',
+            '.xsact-ca-preview{padding:12px 14px;border-radius:9px;background:rgba(255,92,122,0.08);border:1px dashed rgba(255,92,122,0.35);color:var(--xs-text);font-size:13px;line-height:1.55;white-space:pre-line;}',
+            '.xsact-ca-preview::before{content:"效果预览";display:block;font-size:10px;font-weight:600;color:var(--xs-accent-text);letter-spacing:0.04em;text-transform:uppercase;margin-bottom:6px;}',
+            '.xsact-ca-editor .xsact-combo-actions{display:flex;gap:8px;margin-top:4px;}',
+            '.xsact-ca-editor .xsact-combo-actions button{flex:1;padding:10px 14px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;border:none;color:var(--xs-text);transition:background .15s,transform .1s;}',
+            '.xsact-ca-editor .xsact-combo-actions button:hover{transform:translateY(-1px);}',
+            '.xsact-ca-editor .xsact-combo-save-btn{background:#46E0A0;color:#0B1F18;}',
+            '.xsact-ca-editor .xsact-combo-save-btn:hover{background:#2FC989;}',
+            '.xsact-ca-editor .xsact-combo-cancel-btn{background:var(--xs-border);color:var(--xs-text);}',
+            '.xsact-ca-editor .xsact-combo-cancel-btn:hover{background:var(--xs-border-strong);}',
+            '.xsact-ca-del-btn{background:rgba(255,92,92,0.14);color:#FF9C9C;}',
+            '.xsact-ca-del-btn:hover{background:rgba(255,92,92,0.24);transform:translateY(-1px);}',
+
+            '.xsact-ca-raw{display:none;}',
+            '.xsact-ca-editor .xsact-ca-dialog-rich{min-height:54px;max-height:160px;line-height:1.5;white-space:pre-wrap;word-break:break-word;overflow:auto;outline:none;}',
+            '.xsact-ca-editor .xsact-ca-dialog-rich:empty:before{content:attr(data-placeholder);color:var(--xs-text-dim);pointer-events:none;}',
+            '.xsact-token-pill{display:inline-block;background:rgba(255,92,122,0.18);border:1px solid rgba(255,92,122,0.45);color:#FFD6DF;border-radius:5px;padding:1px 5px;font-size:12px;line-height:1.3;cursor:default;user-select:none;-webkit-user-select:none;vertical-align:middle;margin:0 1px;}',
+            '.xsact-zwsp{display:inline;font-size:0;line-height:0;}',
 
             /* 底部操作栏 */
             '.xsact-qa-panel-footer{',
@@ -3130,6 +3750,12 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             '.xsact-qa-mini-btn:hover{background:var(--xs-hover);border-color:var(--xs-border-strong);color:var(--xs-text);}',
             '#xsact-refresh-btn,#xsact-exit-panel-btn{padding:0;width:28px;height:28px;}',
             '#xsact-x3-btn{padding:8px 10px;min-width:34px;}',
+            /* 版本号隐约显示（footer 右下，hover 才清晰） */
+            '.xsact-version-tag{',
+            '  margin-left:auto;font-size:10px;line-height:1;letter-spacing:.04em;user-select:none;',
+            '  color:rgba(var(--xs-accent-rgb),0.9);opacity:.32;transition:opacity .25s ease;align-self:center;',
+            '}',
+            '.xsact-version-tag:hover{opacity:.72;}',
             '.xsact-toggle-pill{gap:5px;padding:8px 10px;}',
             '.xsact-toggle-pill .xsact-ico{width:14px;height:14px;stroke-width:2.2px;}',
             '.xsact-pill-dot{width:7px;height:7px;border-radius:50%;background:var(--xs-text-faint);border:1px solid var(--xs-border-strong);transition:background .15s,box-shadow .15s,border-color .15s;}',
@@ -3505,7 +4131,23 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
     function setupHooks() {
         if (!state.modApi) return;
 
-        // ── Hook: DrawCharacter —— 记录每个角色「真实绘制坐标」(BC-HSC 同款做法) ──
+        // ── Hook: ActivityAllowedForGroup —— 屏蔽 echo 端已导入的同名原始动作 ──
+        // 用户把 echo 动作导入到本插件后，会生成 XSQAct_ 前缀的新 Activity。
+        // 这里把 echo 原始 Activity（Name 在 echoSuppressed 集合中）过滤掉，
+        // 确保插件动作列表和 BC 原生动作列表都不出现重复项。
+        try {
+            state.modApi.hookFunction('ActivityAllowedForGroup', 0, function(args, next) {
+                var result = next(args);
+                if (!state.echoSuppressed || state.echoSuppressed.size === 0 || !Array.isArray(result)) return result;
+                return result.filter(function(item) {
+                    var nm = item && item.Activity && item.Activity.Name;
+                    return !caIsEchoSuppressed(nm);
+                });
+            });
+        } catch (e) {
+            console.warn('[XSAct-QA] ActivityAllowedForGroup hook 失败:', e.message);
+        }
+
         // DrawCharacter(Character, X, Y, Zoom, ...) 的 X/Y/Zoom 是角色最终画上去的位置，
         // 含 ECHO 贴贴等活动的 X 位移，比 ChatRoomCharacterViewLoopCharacters 更准。
         // 这是线框能精确贴合人物模型的关键。
@@ -3553,18 +4195,22 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
 
         // Hook: ActivityRun — 记录每次执行的上下文
         state.modApi.hookFunction('ActivityRun', 0, function(args, next) {
-            var actName = args[0];
-            var targetChar = args[1];
-            if (targetChar && actName) {
-                state.lastAction = {
-                    name: actName,
-                    targetMN: targetChar.MemberNumber,
-                    dict: args[2] || {},
-                    part: state.selectedPart || '',
-                    time: Date.now()
-                };
-                saveStorage(S_LAST, state.lastAction);
-            }
+            try {
+                var sourceChar = args[0];
+                var targetChar = args[1];
+                var group = args[2];
+                var itemActivity = args[3] || {};
+                var actName = (itemActivity.Activity && itemActivity.Activity.Name) || '';
+                if (targetChar && actName) {
+                    state.lastAction = {
+                        name: actName,
+                        targetMN: targetChar.MemberNumber,
+                        part: (group && group.Name) || state.selectedPart || '',
+                        time: Date.now()
+                    };
+                    saveStorage(S_LAST, state.lastAction);
+                }
+            } catch (e) { console.warn('[XSAct-QA] ActivityRun hook 记录失败:', e.message); }
             next(args);
         });
 
@@ -3890,6 +4536,13 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             clearAllFavorites: clearAllFavorites,
             get favorites() { return state.favorites.slice(); },
             favKey: function(partGroup, name) { return partGroup + '|' + name; },
+            // ── 自定义动作 / echo 屏蔽调试 ──
+            state: state,
+            getCustomActions: function() { return state.customActions.slice(); },
+            getEchoSuppressed: function() { return Array.from(state.echoSuppressed); },
+            importFromEcho: importCustomFromEcho,
+            rebuildEchoSuppressed: rebuildEchoSuppressed,
+            removeSuppressedEchoActivities: caRemoveSuppressedEchoActivities,
             // ── 主题切换 ──
             toggleTheme: toggleTheme,
             setTheme: function(id) { applyTheme(id); persist(S_THEME, id); return state.theme; },
