@@ -2,7 +2,7 @@
 // @name         快捷互动 (QuickInteraction)
 // @name:zh      快捷互动
 // @namespace    https://github.com/heitaoplay/QuickInteraction
-// @version      1.1.0
+// @version      1.1.1
 // @description  Bondage Club - 统一动作操作台。一键进入动作模式，在聊天室场景内直接点人物部位选动作，绕过原生5步嵌套菜单。
 // @author       Tao MUSE
 // @homepageURL  https://github.com/heitaoplay/QuickInteraction
@@ -18,7 +18,6 @@
 // For more info see: https://github.com/Jomshir98/bondage-club-mod-sdk
 /** @type {ModSDKGlobalAPI} */
 var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ERROR:\n"+o);const e=new Error(o);throw console.error(e),e}const t=new TextEncoder;function n(o){return!!o&&"object"==typeof o&&!Array.isArray(o)}function r(o){const e=new Set;return o.filter((o=>!e.has(o)&&e.add(o)))}const i=new Map,a=new Set;function c(o){a.has(o)||(a.add(o),console.warn(o))}function s(o){const e=[],t=new Map,n=new Set;for(const r of f.values()){const i=r.patching.get(o.name);if(i){e.push(...i.hooks);for(const[e,a]of i.patches.entries())t.has(e)&&t.get(e)!==a&&c(`ModSDK: Mod '${r.name}' is patching function ${o.name} with same pattern that is already applied by different mod, but with different pattern:\nPattern:\n${e}\nPatch1:\n${t.get(e)||""}\nPatch2:\n${a}`),t.set(e,a),n.add(r.name)}}e.sort(((o,e)=>e.priority-o.priority));const r=function(o,e){if(0===e.size)return o;let t=o.toString().replaceAll("\r\n","\n");for(const[n,r]of e.entries())t.includes(n)||c(`ModSDK: Patching ${o.name}: Patch ${n} not applied`),t=t.replaceAll(n,r);return(0,eval)(`(${t})`)}(o.original,t);let i=function(e){var t,i;const a=null===(i=(t=m.errorReporterHooks).hookChainExit)||void 0===i?void 0:i.call(t,o.name,n),c=r.apply(this,e);return null==a||a(),c};for(let t=e.length-1;t>=0;t--){const n=e[t],r=i;i=function(e){var t,i;const a=null===(i=(t=m.errorReporterHooks).hookEnter)||void 0===i?void 0:i.call(t,o.name,n.mod),c=n.hook.apply(this,[e,o=>{if(1!==arguments.length||!Array.isArray(e))throw new Error(`Mod ${n.mod} failed to call next hook: Expected args to be array, got ${typeof o}`);return r.call(this,o)}]);return null==a||a(),c}}return{hooks:e,patches:t,patchesSources:n,enter:i,final:r}}function l(o,e=!1){let r=i.get(o);if(r)e&&(r.precomputed=s(r));else{let e=window;const a=o.split(".");for(let t=0;t<a.length-1;t++)if(e=e[a[t]],!n(e))throw new Error(`ModSDK: Function ${o} to be patched not found; ${a.slice(0,t+1).join(".")} is not object`);const c=e[a[a.length-1]];if("function"!=typeof c)throw new Error(`ModSDK: Function ${o} to be patched not found`);const l=function(o){let e=-1;for(const n of t.encode(o)){let o=255&(e^n);for(let e=0;e<8;e++)o=1&o?-306674912^o>>>1:o>>>1;e=e>>>8^o}return((-1^e)>>>0).toString(16).padStart(8,"0").toUpperCase()}(c.toString().replaceAll("\r\n","\n")),d={name:o,original:c,originalHash:l};r=Object.assign(Object.assign({},d),{precomputed:s(d),router:()=>{},context:e,contextProperty:a[a.length-1]}),r.router=function(o){return function(...e){return o.precomputed.enter.apply(this,[e])}}(r),i.set(o,r),e[r.contextProperty]=r.router}return r}function d(){for(const o of i.values())o.precomputed=s(o)}function p(){const o=new Map;for(const[e,t]of i)o.set(e,{name:e,original:t.original,originalHash:t.originalHash,sdkEntrypoint:t.router,currentEntrypoint:t.context[t.contextProperty],hookedByMods:r(t.precomputed.hooks.map((o=>o.mod))),patchedByMods:Array.from(t.precomputed.patchesSources)});return o}const f=new Map;function u(o){f.get(o.name)!==o&&e(`Failed to unload mod '${o.name}': Not registered`),f.delete(o.name),o.loaded=!1,d()}function g(o,t){o&&"object"==typeof o||e("Failed to register mod: Expected info object, got "+typeof o),"string"==typeof o.name&&o.name||e("Failed to register mod: Expected name to be non-empty string, got "+typeof o.name);let r=`'${o.name}'`;"string"==typeof o.fullName&&o.fullName||e(`Failed to register mod ${r}: Expected fullName to be non-empty string, got ${typeof o.fullName}`),r=`'${o.fullName} (${o.name})'`,"string"!=typeof o.version&&e(`Failed to register mod ${r}: Expected version to be string, got ${typeof o.version}`),o.repository||(o.repository=void 0),void 0!==o.repository&&"string"!=typeof o.repository&&e(`Failed to register mod ${r}: Expected repository to be undefined or string, got ${typeof o.version}`),null==t&&(t={}),t&&"object"==typeof t||e(`Failed to register mod ${r}: Expected options to be undefined or object, got ${typeof t}`);const i=!0===t.allowReplace,a=f.get(o.name);a&&(a.allowReplace&&i||e(`Refusing to load mod ${r}: it is already loaded and doesn't allow being replaced.\nWas the mod loaded multiple times?`),u(a));const c=o=>{let e=g.patching.get(o.name);return e||(e={hooks:[],patches:new Map},g.patching.set(o.name,e)),e},s=(o,t)=>(...n)=>{var i,a;const c=null===(a=(i=m.errorReporterHooks).apiEndpointEnter)||void 0===a?void 0:a.call(i,o,g.name);g.loaded||e(`Mod ${r} attempted to call SDK function after being unloaded`);const s=t(...n);return null==c||c(),s},p={unload:s("unload",(()=>u(g))),hookFunction:s("hookFunction",((o,t,n)=>{"string"==typeof o&&o||e(`Mod ${r} failed to patch a function: Expected function name string, got ${typeof o}`);const i=l(o),a=c(i);"number"!=typeof t&&e(`Mod ${r} failed to hook function '${o}': Expected priority number, got ${typeof t}`),"function"!=typeof n&&e(`Mod ${r} failed to hook function '${o}': Expected hook function, got ${typeof n}`);const s={mod:g.name,priority:t,hook:n};return a.hooks.push(s),d(),()=>{const o=a.hooks.indexOf(s);o>=0&&(a.hooks.splice(o,1),d())}})),patchFunction:s("patchFunction",((o,t)=>{"string"==typeof o&&o||e(`Mod ${r} failed to patch a function: Expected function name string, got ${typeof o}`);const i=l(o),a=c(i);n(t)||e(`Mod ${r} failed to patch function '${o}': Expected patches object, got ${typeof t}`);for(const[n,i]of Object.entries(t))"string"==typeof i?a.patches.set(n,i):null===i?a.patches.delete(n):e(`Mod ${r} failed to patch function '${o}': Invalid format of patch '${n}'`);d()})),removePatches:s("removePatches",(o=>{"string"==typeof o&&o||e(`Mod ${r} failed to patch a function: Expected function name string, got ${typeof o}`);const t=l(o);c(t).patches.clear(),d()})),callOriginal:s("callOriginal",((o,t,n)=>{"string"==typeof o&&o||e(`Mod ${r} failed to call a function: Expected function name string, got ${typeof o}`);const i=l(o);return Array.isArray(t)||e(`Mod ${r} failed to call a function: Expected args array, got ${typeof t}`),i.original.apply(null!=n?n:globalThis,t)})),getOriginalHash:s("getOriginalHash",(o=>{"string"==typeof o&&o||e(`Mod ${r} failed to get hash: Expected function name string, got ${typeof o}`);return l(o).originalHash}))},g={name:o.name,fullName:o.fullName,version:o.version,repository:o.repository,allowReplace:i,api:p,loaded:!0,patching:new Map};return f.set(o.name,g),Object.freeze(p)}function h(){const o=[];for(const e of f.values())o.push({name:e.name,fullName:e.fullName,version:e.version,repository:e.repository});return o}let m;const y=void 0===window.bcModSdk?window.bcModSdk=function(){const e={version:o,apiVersion:1,registerMod:g,getModsInfo:h,getPatchingInfo:p,errorReporterHooks:Object.seal({apiEndpointEnter:null,hookEnter:null,hookChainExit:null})};return m=e,Object.freeze(e)}():(n(window.bcModSdk)||e("Failed to init Mod SDK: Name already in use"),1!==window.bcModSdk.apiVersion&&e(`Failed to init Mod SDK: Different version already loaded ('1.2.0' vs '${window.bcModSdk.version}')`),window.bcModSdk.version!==o&&alert(`Mod SDK warning: Loading different but compatible versions ('1.2.0' vs '${window.bcModSdk.version}')\nOne of mods you are using is using an old version of SDK. It will work for now but please inform author to update`),window.bcModSdk);return"undefined"!=typeof exports&&(Object.defineProperty(exports,"__esModule",{value:!0}),exports.default=y),y}();
-
 
 
 (function () {
@@ -62,7 +61,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         if (!_serverSyncWarned) { _serverSyncWarned = true; toast('设置同步到服务器失败，已保留在本地', '#FF5C5C'); }
     }
 
-    const VERSION = '1.1.0';
+    const VERSION = '1.1.1';
 
     // ── 存储键 ──
     const S_ENABLED = 'xsact_qa_enabled';
@@ -252,7 +251,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                 if (typeof val === 'object' && val) {
                     console.error('  keys=', Object.keys(val).join(','), 'types=', Object.keys(val).map(function(k){ return typeof val[k]; }).join(','));
                 }
-            } catch (_) {}
+            } catch (_) { console.warn('[XSAct-QA] 诊断存储值结构失败（已忽略）:', _ && _.message); }
             // 二次兜底：跳过循环引用，保证数据尽量落盘，绝不让存储写入中断业务流程
             try { localStorage.setItem(key, safeStringify(val)); console.warn('[XSAct-QA] 已用安全序列化兜底写入 ' + key + '（跳过循环引用）'); }
             catch (e2) { console.error('[XSAct-QA] 安全兜底仍失败 ' + key + ':', e2); }
@@ -371,6 +370,8 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
      * fallback 才用 BC_Interactive_Index / ActivityFemale3DCG 全量列表。
      */
     /* ===== 5. 动作解析与发包（核心业务） ===== */
+
+
     function getActionsForPart(partGroup, targetChar) {
         targetChar = targetChar || state.selectedTarget;
         var actions = [];
@@ -594,13 +595,6 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         return true;
     }
 
-    /** 获取房间内其他角色列表 */
-    function getRoomCharacters() {
-        if (typeof ChatRoomCharacter === 'undefined' || !Array.isArray(ChatRoomCharacter)) return [];
-        return ChatRoomCharacter.filter(function(c) {
-            return c && c.IsPlayer() === false && c.MemberNumber && c.MemberNumber !== Player.MemberNumber;
-        });
-    }
 
     /* ══════════════════════════════════════════════════════════════
        动作执行 — 参考 PAT All 的 makeActivityPacket + ServerSend 模式
@@ -697,6 +691,8 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
      * @param {string} name - 动作原始名（如 ItemBreastCaress）
      * @param {Item|null} activityItem - ActivityAllowedForGroup 返回的绑定道具（可选）
      */
+
+
     function makeActivityPacket(targetChar, group, name, activityItem) {
         var targetMN = targetChar && targetChar.MemberNumber;
         var contentKey = resolveContentKey(group, name, targetChar);
@@ -1010,6 +1006,8 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
        比自动按动作名聚合更准确，可跨部位、跨动作自由组合。
        ══════════════════════════════════════════════════════════════ */
 
+
+
     /* ===== 6. 自定义组合（CRUD + 执行） ===== */
     function generateId() { return 'cmb_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 7); }
     function saveCombos() { persist(S_COMBOS, state.combos); }
@@ -1103,6 +1101,8 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
           Action 兜底分支（名字含下划线 → 走彩色小字动作，文本用本地字典）。
        ══════════════════════════════════════════════════════════════ */
 
+
+
     /* ===== 6.5 自定义动作（CRUD + 注册 + 执行 + 互通） ===== */
     var CA_PREFIX = 'XSQAct_';  // 自定义动作内部 Activity 名前缀；避免与 XiaoSuActivity 的 XSAct_ 前缀冲突
     function caHash(str) {
@@ -1169,7 +1169,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                     if (ActivityFemale3DCGOrdering[j] === nm) ActivityFemale3DCGOrdering.splice(j, 1);
                 }
             }
-        } catch (_) {}
+        } catch (_) { console.warn('[XSAct-QA] 反注册活动排序项失败（已忽略）:', _ && _.message); }
     }
     /** 按活动名反查自定义动作对象（用于发包时取对话文本） */
     function caFindByActivityName(name) {
@@ -1208,7 +1208,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             var echoKey = ext && Object.keys(ext).find(function(k) { return k.indexOf('ECHO') === 0; });
             var echoData = echoKey && ext[echoKey] && ext[echoKey]['动作数据'];
             if (echoData) Object.values(echoData).forEach(function(item) { if (item && item.Name) echoNames.add(item.Name); });
-        } catch (e) {}
+        } catch (e) { console.warn('[XSAct-QA] 读取 echo 动作数据失败（已忽略）:', e && e.message); }
         state.customActions.forEach(function(a) {
             if (typeof a.visible !== 'boolean') a.visible = true;
             if (!a.source) a.source = echoNames.has(a.name) ? 'echo' : 'native';
@@ -1267,7 +1267,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         }
     }
     function saveEchoSuppressed() {
-        try { persist(S_ECHO_SUPPRESS, Array.from(state.echoSuppressed)); } catch (e) {}
+        try { persist(S_ECHO_SUPPRESS, Array.from(state.echoSuppressed)); } catch (e) { console.warn('[XSAct-QA] 持久化 echo 屏蔽集合失败（已忽略）:', e && e.message); }
     }
     function rebuildEchoSuppressed() {
         // 以持久化的屏蔽集合为基础，同步当前所有 source==='echo' 的自定义动作名，
@@ -1444,6 +1444,8 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
     function caNewId() { return 'ca_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 7); }
 
     /** 我的动作面板：列表视图 或 编辑视图 */
+
+
     function updateCustomActionPanel(charObj) {
         if (!state.actionPanelEl) return;
         var titleEl = state.actionPanelEl.querySelector('#xsact-panel-title');
@@ -1713,7 +1715,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                     dragEl = card;
                     state.caDragId = card.dataset.id;
                     e.dataTransfer.effectAllowed = 'move';
-                    try { e.dataTransfer.setData('text/plain', card.dataset.id); } catch (err) {}
+                    try { e.dataTransfer.setData('text/plain', card.dataset.id); } catch (err) { console.warn('[XSAct-QA] 拖拽 setData 失败（已忽略）:', err && err.message); }
                     setTimeout(function(){ if (dragEl) dragEl.classList.add('dragging'); }, 0);
                 });
                 dragList.addEventListener('dragover', function(e) {
@@ -1741,6 +1743,8 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
 
     /** 自定义动作列表拖拽排序：根据鼠标 Y 坐标计算插入位置
      *  （返回应插入其前的元素；null 表示插入到末尾）。 */
+
+
     function getCaDragAfter(container, y) {
         var els = Array.from(container.querySelectorAll('.xsact-ca-card.is-edit:not(.dragging)'));
         var closest = { offset: -Infinity, el: null };
@@ -2049,6 +2053,8 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         });
     }
 
+
+
     function runCustomAction(id, charObj) {
         var act = getCustom(id);
         if (!act) return;
@@ -2258,6 +2264,8 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
     }
 
     /** 切换「全部」范围开关，并更新按钮视觉 */
+
+
     /* ===== 7. 模式切换（全员 / 收藏 / 自己） ===== */
     function toggleAllMode() {
         state.allModeActive = !state.allModeActive;
@@ -2375,6 +2383,8 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
     // ════════════════════════════════════════════════════════════════════════
 
     /** 创建 DOM 切换按钮 */
+
+
     /* ===== 9. 浮动开关（闪电按钮 + 拖拽 + 可见性守卫） ===== */
     function createToggleButton() {
         if (state.toggleBtnEl) return;
@@ -2520,6 +2530,8 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
     /**
      * 进入/退出动作模式
      */
+
+
     /* ===== 10. 动作模式生命周期 ===== */
     function toggleActionMode() {
         state.isActive = !state.isActive;
@@ -2564,7 +2576,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         applyPanelPosition();
         renderPanel();
         renderPendingBanner();
-        checkUpdate().catch(function() {});
+        checkUpdate().catch(function(e) { console.warn('[XSAct-QA] 更新检查失败（已忽略）:', e && e.message); });
 
         // 恢复自己模式开关状态
         state.selfModeActive = loadSetting(S_SELF, false);
@@ -2601,6 +2613,8 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
     }
 
     /** 构建右侧面板 HTML */
+
+
     /* ===== 11. 主面板 UI（HTML 结构） ===== */
     function buildPanelHTML() {
         return '\
@@ -2658,6 +2672,8 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
      * 获取房间内"真实成员"的绘制布局（逻辑坐标）
      * 使用 ChatRoomCharacter（权威成员列表）交叉校验，避免 Drawlist 含离场/NPC 角色
      */
+
+
     /* ===== 12. 画布身体网格（霓虹线框） ===== */
     function getCharLayout() {
         var layout = [];
@@ -2945,6 +2961,8 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
     }
 
     /** 选中目标和部位 */
+
+
     /* ===== 13. 目标选择与人物浮层 ===== */
     function selectTargetAndPart(charObj, partGroup) {
         state.selectedTarget = charObj;
@@ -3143,6 +3161,8 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
     // ════════════════════════════════════════════════════════════════════════
 
     /** 面板渲染分派：根据 state.panelMode 渲染「单部位」或「自定义组合」 */
+
+
     /* ===== 14. 面板渲染与模式 ===== */
     function renderPanel() {
         if (!state.actionPanelEl) return;
@@ -3357,6 +3377,8 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         });
     }
 
+
+
     function escapeHtml(s) {
         return String(s || '').replace(/[&<>"']/g, function(m) {
             return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[m];
@@ -3496,7 +3518,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                         // 来源为 LSCG / Liko 的动作会改变可用状态/进度（如进食进度、道具附加），
                         // 执行后立即静默刷新当前部位动作列表以反映最新状态，且不弹任何提示。
                         if (srcKey === 'LSCG' || srcKey === 'LIKO') {
-                            setTimeout(function() { try { updateActionPanel(charObj, partGroup); } catch (_) {} }, 50);
+                            setTimeout(function() { try { updateActionPanel(charObj, partGroup); } catch (_) { console.warn('[XSAct-QA] 延迟刷新动作面板失败（已忽略）:', _ && _.message); } }, 50);
                         } else if (execOk !== false) {
                             toast('已执行：' + getActivityLabel(actName, partGroup), '#46E0A0');
                         }
@@ -3531,6 +3553,8 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
     // ════════════════════════════════════════════════════════════════════════
 
     /** 把面板恢复到上次拖拽保存的位置（无记录则用默认右上角） */
+
+
     function applyPanelPosition() {
         if (!state.actionPanelEl) return;
         var saved = loadSetting(S_POS, null);
@@ -3843,6 +3867,8 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         });
         return blocks.join('\n');
     }
+
+
 
     function injectStyles() {
         // 清理任何残留的旧样式表：历史上多次热注入可能留下了无 id 的 <style>，
@@ -4611,6 +4637,8 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
     //  · 动态定位 + 视口翻转（上方空间不足翻到下方、超出左右则夹取），固定间距不随光标抖动
     //  · 120ms 短延迟显隐；scroll 时隐藏避免错位
     // ─────────────────────────────────────────────────────────────────────────
+
+
     function initTooltip() {
         if (window.__xsactTooltipReady) return;
         window.__xsactTooltipReady = true;
@@ -4899,6 +4927,8 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
     // 更新 / 公告检测（脚本内 5 分钟轮询，玩家端收得到，无需刷新页面）
     // ════════════════════════════════════════════════════════════════════════
 
+
+
     /* ===== 14.5 更新与公告 ===== */
     const VERSION_INFO_URL = 'https://heitaoplay.github.io/QuickInteraction/version.json';
 
@@ -5003,19 +5033,21 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                     persist(S_LAST_ANNOUNCE_VER, info.version);
                 }
             }
-        } catch (e) { /* 离线 / 跨域失败：静默跳过，不影响游戏 */ }
+        } catch (e) { console.warn('[XSAct-QA] 更新检查网络失败（离线/跨域，已静默跳过）:', e && e.message); }
     }
 
     function startUpdateChecker() {
         if (state.updateTimer) return;
         // 加载后 30 秒先查一次，之后每 5 分钟轮询
-        setTimeout(function() { checkUpdate().catch(function() {}); }, 30000);
-        state.updateTimer = setInterval(function() { checkUpdate().catch(function() {}); }, 5 * 60 * 1000);
+        setTimeout(function() { checkUpdate().catch(function(e) { console.warn('[XSAct-QA] 更新检查失败（已忽略）:', e && e.message); }); }, 30000);
+        state.updateTimer = setInterval(function() { checkUpdate().catch(function(e) { console.warn('[XSAct-QA] 更新检查失败（已忽略）:', e && e.message); }); }, 5 * 60 * 1000);
     }
 
     // ════════════════════════════════════════════════════════════════════════
     // 初始化入口
     // ════════════════════════════════════════════════════════════════════════
+
+
 
     /* ===== 15. 启动与初始化 ===== */
     async function main() {
