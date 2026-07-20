@@ -9,11 +9,11 @@
     "【优化】构建产物体积基本不变（约 307KB），无功能变化，运行表现与 v1.1.0 完全一致"
   ],
   "announcement": {
-    "id": "2026-07-21-refactor-v1.1.1",
+    "id": "2026-07-21-feature-v1.1.0",
     "severity": "info",
-    "title": "XSAct-QuickAction v1.1.1 架构优化已发布",
-    "message": "我们完成了底层代码架构重构（单文件拆分为模块化源码），运行更流畅、后续迭代更快。本次无新功能变化，建议更新以获得更稳定的体验。",
-    "detailsUrl": "https://github.com/heitaoplay/QuickInteraction/releases/tag/v1.1.1"
+    "title": "XSAct-QuickAction v1.1.0 重大功能更新",
+    "message": "「我的动作」列表全新交互：点击卡片多选、编辑模式支持批量删除 / 全选 / 拖拽排序并持久化；新增一键开关全部、工具栏图标化；并修复书签静默失效（新增加载反馈与前提提示）。点此查看完整说明。",
+    "detailsUrl": "https://github.com/heitaoplay/QuickInteraction/releases/tag/v1.1.0"
   },
   "detailsUrl": "https://github.com/heitaoplay/QuickInteraction/releases/tag/v1.1.1"
 }
