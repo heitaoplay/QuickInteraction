@@ -2,7 +2,7 @@
 // @name         快捷互动 (QuickInteraction)
 // @name:zh      快捷互动
 // @namespace    https://github.com/heitaoplay/QuickInteraction
-// @version      1.0.8
+// @version      1.1.0
 // @description  Bondage Club - 统一动作操作台。一键进入动作模式，在聊天室场景内直接点人物部位选动作，绕过原生5步嵌套菜单。
 // @author       Tao MUSE
 // @homepageURL  https://github.com/heitaoplay/QuickInteraction
@@ -62,7 +62,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         if (!_serverSyncWarned) { _serverSyncWarned = true; toast('设置同步到服务器失败，已保留在本地', '#FF5C5C'); }
     }
 
-    const VERSION = '1.0.8';
+    const VERSION = '1.1.0';
 
     // ── 存储键 ──
     const S_ENABLED = 'xsact_qa_enabled';
@@ -101,6 +101,9 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         echoSuppressed: new Set(),    // 已导入的 echo 原始动作名（屏蔽用）
         echoPrefixes: new Set(),     // 已导入 echo 动作的中文显示前缀（安全前缀兜底，仅匹配 echo 命名空间，不误伤 BC 原生动作）
         editingCustomId: null,        // 正在编辑的自定义动作 id
+        caEditMode: false,           // 自定义动作「编辑模式」（拖动排序/批量管理）
+        caSelected: [],              // 编辑模式下选中的自定义动作 id 列表
+        caDragId: null,              // 拖动排序中正在拖拽的 id
         favorites: [],                // 收藏复合键数组：格式 "部位Group|动作名"（如 "ItemMouth|Caress"）
         presets: [],                  // 预留预设
         lastAction: null,             // 上次执行的动作
@@ -1458,21 +1461,49 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
 
         // ── 列表视图 ──
         titleEl.textContent = (charObj ? characterDisplayName(charObj) + ' → ' : '') + '我的动作（测试版）';
-        var acts = state.customActions;
         var html = '';
+        var acts = state.customActions;
+        var editMode = state.caEditMode;
+        var selSet = {};
+        (state.caSelected || []).forEach(function(id){ selSet[id] = true; });
+        var allOn = acts.length > 0 && acts.every(function(a){ return a.visible !== false; });
+
         html += '<div class="xsact-ca-view">';
+        // 工具栏
         html += '<div class="xsact-ca-toolbar">' +
-            '<input type="text" id="xsact-ca-search" class="xsact-ca-search" placeholder="搜索动作...">' +
+            '<input type="text" id="xsact-ca-search" class="xsact-ca-search' + (editMode ? ' is-hidden' : '') + '" placeholder="搜索动作...">' +
             '<div class="xsact-ca-toolbar-btns">' +
             '<button class="xsact-ca-new" id="xsact-ca-new" title="新建">' + svgIcon('plus', 14) + '<span>新建</span></button>' +
-            '<button class="xsact-ca-import" id="xsact-ca-import" title="从 echo/回声 导入" data-tooltip="从 echo/回声 导入@@一键导入回声扩展里的自定义动作">' + svgIcon('download', 14) + '</button>' +
+            '<div class="xsact-ca-import-wrap">' +
+            '<button class="xsact-ca-import" id="xsact-ca-import" title="导入" data-tooltip="导入@@从 echo/回声 或本地 JSON 导入自定义动作">' + svgIcon('download', 14) + '</button>' +
+            '<div class="xsact-ca-import-menu hidden" id="xsact-ca-import-menu">' +
+            '<button data-import="echo">从 echo/回声 导入</button>' +
+            '<button data-import="file">从本地 JSON 导入</button>' +
+            '</div>' +
+            '<input type="file" id="xsact-ca-file-input" class="xsact-ca-file-input" accept="application/json,.json">' +
+            '</div>' +
             '<button class="xsact-ca-export" id="xsact-ca-export" title="导出为 JSON">' + svgIcon('upload', 14) + '</button>' +
+            '<button class="xsact-ca-editmode' + (editMode ? ' is-active' : '') + '" id="xsact-ca-editmode" title="' + (editMode ? '完成编辑' : '编辑模式：拖动排序与批量管理') + '">' + svgIcon('bulkEdit', 16) + '</button>' +
+            '<button class="xsact-ca-toggleall' + (allOn ? ' is-on' : '') + '" id="xsact-ca-toggleall" title="' + (allOn ? '当前全部开启，点击全部关闭' : '当前全部关闭，点击全部开启') + '">' + svgIcon(allOn ? 'toggleOn' : 'toggleOff', 16) + '</button>' +
             '</div></div>';
+
+        // 编辑模式批量栏
+        if (editMode) {
+            html += '<div class="xsact-ca-batchbar" id="xsact-ca-batchbar">' +
+                '<button class="xsact-ca-select-all" id="xsact-ca-select-all">全选</button>' +
+                '<span class="xsact-ca-selected-count" id="xsact-ca-selected-count">已选 0 个</span>' +
+                '<div class="xsact-ca-batch-actions">' +
+                '<button id="xsact-ca-batch-close" disabled>批量关闭</button>' +
+                '<button id="xsact-ca-batch-delete" class="xsact-ca-batch-del" disabled>批量删除</button>' +
+                '</div></div>';
+        }
+
         html += '<div class="xsact-ca-beta">自定义动作功能当前为【测试版(Beta)】，仍在开发中，可能存在不稳定或未完善之处，建议谨慎使用并及时反馈问题。</div>';
+
         if (!acts.length) {
             html += '<div class="xsact-qa-empty xsact-ca-empty">还没有自定义动作。点「新建」创建，或点「导入」从 echo/回声 迁移。</div>';
         } else {
-            html += '<div class="xsact-ca-list">';
+            html += '<div class="xsact-ca-list' + (editMode ? ' is-editing' : '') + '">';
             acts.forEach(function(a) {
                 var scopeBadge = a.scope === 'self' ? '<span class="xsact-ca-badge self">仅自己</span>'
                     : a.scope === 'other' ? '<span class="xsact-ca-badge other">仅他人</span>'
@@ -1480,28 +1511,45 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                 var sourceBadge = a.source === 'echo' ? '<span class="xsact-ca-src echo" title="来自 echo/回声 导入">echo</span>' : '<span class="xsact-ca-src native" title="本插件创建">XSAct</span>';
                 var partLbl = (BODY_PARTS.find(function(p) { return p.group === a.group; }) || {}).label || a.group;
                 var isVisible = a.visible !== false;
-                html += '<div class="xsact-ca-card' + (isVisible ? '' : ' is-hidden') + '" data-id="' + a.id + '">' +
-                    '<div class="xsact-ca-info">' +
-                        '<div class="xsact-ca-title">' +
-                            '<span class="xsact-ca-name">' + escapeHtml(a.name) + '</span>' +
-                            scopeBadge +
-                            sourceBadge +
+                var isSel = !!selSet[a.id];
+                if (editMode) {
+                    html += '<div class="xsact-ca-card is-edit' + (isSel ? ' is-selected' : '') + (isVisible ? '' : ' is-hidden') + '" data-id="' + a.id + '" draggable="true">' +
+                        '<span class="xsact-ca-handle" title="拖动排序">' + svgIcon('grip', 14) + '</span>' +
+                        '<div class="xsact-ca-info">' +
+                            '<div class="xsact-ca-title">' +
+                                '<span class="xsact-ca-name">' + escapeHtml(a.name) + '</span>' +
+                                scopeBadge + sourceBadge +
+                            '</div>' +
+                            '<div class="xsact-ca-meta">' +
+                                '<span class="xsact-ca-part">' + escapeHtml(partLbl) + '</span>' +
+                                '<span class="xsact-ca-vis-dot ' + (isVisible ? 'on' : 'off') + '">' + (isVisible ? '显示中' : '已隐藏') + '</span>' +
+                            '</div>' +
                         '</div>' +
-                        '<div class="xsact-ca-meta">' +
-                            '<label class="xsact-ca-toggle" title="在「动作」面板和 BC 原生动作列表中显示">' +
-                                '<input type="checkbox" class="xsact-ca-visible" data-id="' + a.id + '"' + (isVisible ? ' checked' : '') + '>' +
-                                '<span class="xsact-ca-toggle-track"></span>' +
-                                '<span class="xsact-ca-toggle-label">' + (isVisible ? '显示' : '隐藏') + '</span>' +
-                            '</label>' +
-                            '<span class="xsact-ca-part">' + escapeHtml(partLbl) + '</span>' +
+                        '<span class="xsact-ca-check" aria-hidden="true">' + svgIcon('check', 14) + '</span>' +
+                    '</div>';
+                } else {
+                    html += '<div class="xsact-ca-card' + (isVisible ? '' : ' is-hidden') + '" data-id="' + a.id + '">' +
+                        '<div class="xsact-ca-info">' +
+                            '<div class="xsact-ca-title">' +
+                                '<span class="xsact-ca-name">' + escapeHtml(a.name) + '</span>' +
+                                scopeBadge + sourceBadge +
+                            '</div>' +
+                            '<div class="xsact-ca-meta">' +
+                                '<label class="xsact-ca-toggle" title="在「动作」面板和 BC 原生动作列表中显示">' +
+                                    '<input type="checkbox" class="xsact-ca-visible" data-id="' + a.id + '"' + (isVisible ? ' checked' : '') + '>' +
+                                    '<span class="xsact-ca-toggle-track"></span>' +
+                                    '<span class="xsact-ca-toggle-label">' + (isVisible ? '显示' : '隐藏') + '</span>' +
+                                '</label>' +
+                                '<span class="xsact-ca-part">' + escapeHtml(partLbl) + '</span>' +
+                            '</div>' +
                         '</div>' +
-                    '</div>' +
-                    '<div class="xsact-ca-btns">' +
-                        '<button class="xsact-ca-run" title="对当前目标执行" data-id="' + a.id + '">' + svgIcon('play', 14) + '</button>' +
-                        '<button class="xsact-ca-edit" title="编辑" data-id="' + a.id + '">' + svgIcon('pencil', 14) + '</button>' +
-                        '<button class="xsact-ca-delete" title="删除" data-tooltip-type="danger" data-id="' + a.id + '">' + svgIcon('trash', 14) + '</button>' +
-                    '</div>' +
-                '</div>';
+                        '<div class="xsact-ca-btns">' +
+                            '<button class="xsact-ca-run" title="对当前目标执行" data-id="' + a.id + '">' + svgIcon('play', 14) + '</button>' +
+                            '<button class="xsact-ca-edit" title="编辑" data-id="' + a.id + '">' + svgIcon('pencil', 14) + '</button>' +
+                            '<button class="xsact-ca-delete" title="删除" data-tooltip-type="danger" data-id="' + a.id + '">' + svgIcon('trash', 14) + '</button>' +
+                        '</div>' +
+                    '</div>';
+                }
             });
             html += '</div>';
         }
@@ -1515,7 +1563,30 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             renderCustomEditor(draft, charObj, listEl, titleEl);
         });
         var importBtn = listEl.querySelector('#xsact-ca-import');
-        if (importBtn) importBtn.addEventListener('click', function() { importCustomFromEcho(); updateCustomActionPanel(charObj); });
+        var importMenu = listEl.querySelector('#xsact-ca-import-menu');
+        if (importBtn && importMenu) {
+            importBtn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                importMenu.classList.toggle('hidden');
+            });
+            importMenu.querySelectorAll('button').forEach(function(mb) {
+                mb.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    importMenu.classList.add('hidden');
+                    var mode = mb.dataset.import;
+                    if (mode === 'echo') { importCustomFromEcho(); }
+                    else if (mode === 'file') { listEl.querySelector('#xsact-ca-file-input').click(); }
+                });
+            });
+            var closeMenu = function(ev) { if (!importMenu.contains(ev.target) && !importBtn.contains(ev.target)) importMenu.classList.add('hidden'); };
+            state.actionPanelEl.addEventListener('click', closeMenu);
+        }
+        var fileInput = listEl.querySelector('#xsact-ca-file-input');
+        if (fileInput) fileInput.addEventListener('change', function() {
+            var file = fileInput.files && fileInput.files[0];
+            if (file) importCustomFromFile(file);
+            fileInput.value = '';
+        });
         var exportBtn = listEl.querySelector('#xsact-ca-export');
         if (exportBtn) exportBtn.addEventListener('click', exportCustomActions);
         var searchInput = listEl.querySelector('#xsact-ca-search');
@@ -1526,14 +1597,38 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                 card.style.display = (!q || nm.toLowerCase().indexOf(q) !== -1) ? '' : 'none';
             });
         });
+
+        // 编辑模式按钮（进入 / 退出）
+        var editModeBtn = listEl.querySelector('#xsact-ca-editmode');
+        if (editModeBtn) editModeBtn.addEventListener('click', function() {
+            state.caEditMode = !state.caEditMode;
+            state.caSelected = [];
+            updateCustomActionPanel(charObj);
+        });
+
+        // 一键切换所有开关：当前若全部已开启则全部关闭，否则全部开启
+        var toggleAllBtn = listEl.querySelector('#xsact-ca-toggleall');
+        if (toggleAllBtn) toggleAllBtn.addEventListener('click', function() {
+            var turnOn = !allOn;
+            acts.forEach(function(a) {
+                a.visible = turnOn;
+                caRegister(a);
+            });
+            saveCustomActions();
+            updateCustomActionPanel(charObj);
+            toast(turnOn ? '已开启全部 ' + acts.length + ' 个动作' : '已关闭全部 ' + acts.length + ' 个动作', turnOn ? '#46E0A0' : '#888');
+        });
+
+        // 非编辑模式：执行 / 编辑 / 删除 / 开关
         listEl.querySelectorAll('.xsact-ca-run').forEach(function(btn) {
-            btn.addEventListener('click', function() { runCustomAction(btn.dataset.id, charObj); });
+            btn.addEventListener('click', function(e) { e.stopPropagation(); runCustomAction(btn.dataset.id, charObj); });
         });
         listEl.querySelectorAll('.xsact-ca-edit').forEach(function(btn) {
-            btn.addEventListener('click', function() { state.editingCustomId = btn.dataset.id; updateCustomActionPanel(charObj); });
+            btn.addEventListener('click', function(e) { e.stopPropagation(); state.editingCustomId = btn.dataset.id; updateCustomActionPanel(charObj); });
         });
         listEl.querySelectorAll('.xsact-ca-delete').forEach(function(btn) {
-            btn.addEventListener('click', function() {
+            btn.addEventListener('click', function(e) {
+                e.stopPropagation();
                 var id = btn.dataset.id;
                 var a = getCustom(id);
                 if (a && confirm('确定删除自定义动作「' + a.name + '」吗？')) { deleteCustom(id); updateCustomActionPanel(charObj); toast('已删除', '#888'); }
@@ -1546,11 +1641,117 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                 if (!a) return;
                 a.visible = !!chk.checked;
                 saveCustomActions();
-                caRegister(a); // 隐藏时卸载，显示时注册
+                caRegister(a);
                 updateCustomActionPanel(charObj);
                 toast(a.visible ? '已显示「' + a.name + '」' : '已隐藏「' + a.name + '」', a.visible ? '#46E0A0' : '#888');
             });
         });
+
+        // 编辑模式：批量栏 + 点击选中 + 拖拽排序
+        if (editMode) {
+            var selectAllBtn = listEl.querySelector('#xsact-ca-select-all');
+            var selectedCountEl = listEl.querySelector('#xsact-ca-selected-count');
+            var batchCloseBtn = listEl.querySelector('#xsact-ca-batch-close');
+            var batchDeleteBtn = listEl.querySelector('#xsact-ca-batch-delete');
+            function syncSel() {
+                var cards = listEl.querySelectorAll('.xsact-ca-card.is-edit');
+                cards.forEach(function(card) {
+                    var id = card.dataset.id;
+                    if (state.caSelected.indexOf(id) !== -1) card.classList.add('is-selected');
+                    else card.classList.remove('is-selected');
+                });
+                if (selectedCountEl) selectedCountEl.textContent = '已选 ' + state.caSelected.length + ' 个';
+                if (batchCloseBtn) batchCloseBtn.disabled = state.caSelected.length === 0;
+                if (batchDeleteBtn) batchDeleteBtn.disabled = state.caSelected.length === 0;
+                if (selectAllBtn) selectAllBtn.textContent = (state.caSelected.length > 0 && state.caSelected.length === cards.length) ? '取消全选' : '全选';
+            }
+            if (selectAllBtn) selectAllBtn.addEventListener('click', function() {
+                var cards = Array.from(listEl.querySelectorAll('.xsact-ca-card.is-edit'));
+                var allSelected = state.caSelected.length > 0 && state.caSelected.length === cards.length;
+                state.caSelected = allSelected ? [] : cards.map(function(c){ return c.dataset.id; });
+                syncSel();
+            });
+            listEl.querySelectorAll('.xsact-ca-card.is-edit').forEach(function(card) {
+                card.addEventListener('click', function(e) {
+                    if (e.target.closest('.xsact-ca-handle')) return; // 拖拽手柄不触发选中
+                    var id = card.dataset.id;
+                    var idx = state.caSelected.indexOf(id);
+                    if (idx === -1) state.caSelected.push(id);
+                    else state.caSelected.splice(idx, 1);
+                    syncSel();
+                });
+            });
+            if (batchCloseBtn) batchCloseBtn.addEventListener('click', function() {
+                if (!state.caSelected.length) return;
+                state.caSelected.slice().forEach(function(id) {
+                    var a = getCustom(id);
+                    if (!a) return;
+                    a.visible = false;
+                    caRegister(a);
+                });
+                saveCustomActions();
+                updateCustomActionPanel(charObj);
+                toast('已批量关闭 ' + state.caSelected.length + ' 个动作', '#888');
+            });
+            if (batchDeleteBtn) batchDeleteBtn.addEventListener('click', function() {
+                if (!state.caSelected.length) return;
+                var names = state.caSelected.map(function(id) { var a = getCustom(id); return a ? a.name : ''; }).filter(Boolean).join('、');
+                if (!confirm('确定批量删除以下 ' + state.caSelected.length + ' 个动作吗？\n' + names)) return;
+                state.caSelected.slice().forEach(function(id) { deleteCustom(id); });
+                state.caSelected = [];
+                updateCustomActionPanel(charObj);
+                toast('已批量删除 ' + state.caSelected.length + ' 个动作', '#FF5C5C');
+            });
+
+            // 拖拽排序
+            var dragList = listEl.querySelector('.xsact-ca-list.is-editing');
+            if (dragList) {
+                var dragEl = null;
+                dragList.addEventListener('dragstart', function(e) {
+                    var card = e.target.closest('.xsact-ca-card.is-edit');
+                    if (!card) return;
+                    dragEl = card;
+                    state.caDragId = card.dataset.id;
+                    e.dataTransfer.effectAllowed = 'move';
+                    try { e.dataTransfer.setData('text/plain', card.dataset.id); } catch (err) {}
+                    setTimeout(function(){ if (dragEl) dragEl.classList.add('dragging'); }, 0);
+                });
+                dragList.addEventListener('dragover', function(e) {
+                    if (!dragEl) return;
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = 'move';
+                    var after = getCaDragAfter(dragList, e.clientY);
+                    if (after == null) dragList.appendChild(dragEl);
+                    else dragList.insertBefore(dragEl, after);
+                });
+                dragList.addEventListener('drop', function(e) { if (dragEl) e.preventDefault(); });
+                dragList.addEventListener('dragend', function() {
+                    if (!dragEl) return;
+                    dragEl.classList.remove('dragging');
+                    dragEl = null;
+                    var ids = Array.from(dragList.querySelectorAll('.xsact-ca-card.is-edit')).map(function(c){ return c.dataset.id; });
+                    state.customActions.sort(function(a, b){ return ids.indexOf(a.id) - ids.indexOf(b.id); });
+                    saveCustomActions();
+                    updateCustomActionPanel(charObj);
+                });
+            }
+            syncSel();
+        }
+    }
+
+    /** 自定义动作列表拖拽排序：根据鼠标 Y 坐标计算插入位置
+     *  （返回应插入其前的元素；null 表示插入到末尾）。 */
+    function getCaDragAfter(container, y) {
+        var els = Array.from(container.querySelectorAll('.xsact-ca-card.is-edit:not(.dragging)'));
+        var closest = { offset: -Infinity, el: null };
+        els.forEach(function(child) {
+            var box = child.getBoundingClientRect();
+            var offset = y - box.top - box.height / 2;
+            if (offset < 0 && offset > closest.offset) {
+                closest = { offset: offset, el: child };
+            }
+        });
+        return closest.el;
     }
 
     /** 渲染一个迷你身体部位选择 SVG（用于自定义动作编辑器内）。
@@ -1608,12 +1809,15 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             '<div class="xsact-ca-part-map" id="xsact-ca-part-map"></div>' +
             '<input type="hidden" id="xsact-ca-group" value="' + group + '">' +
             '</div>';
-        html += '<div class="xsact-combo-field"><label>对他人时显示</label><textarea id="xsact-ca-dialog-raw" class="xsact-ca-raw" rows="2">' + escapeHtml(act.dialog) + '</textarea><div id="xsact-ca-dialog" class="xsact-ca-dialog-rich" contenteditable="true" data-placeholder="如：轻轻咬住了 对方 的耳朵"></div></div>';
-        html += '<div class="xsact-combo-field"><label>对自己时显示</label><textarea id="xsact-ca-dialogself-raw" class="xsact-ca-raw" rows="2">' + escapeHtml(act.dialogSelf || '') + '</textarea><div id="xsact-ca-dialogself" class="xsact-ca-dialog-rich" contenteditable="true" data-placeholder="如：被轻轻咬住了耳朵"></div></div>';
-        html += '<div class="xsact-ca-hint">可用占位符（点击插入）：' +
-            '<button class="xsact-ca-token" data-token="{SourceCharacter}">自己</button>' +
-            '<button class="xsact-ca-token" data-token="{TargetCharacter}">对方</button>' +
+        html += '<div class="xsact-combo-field"><label>对他人时显示</label><textarea id="xsact-ca-dialog-raw" class="xsact-ca-raw" rows="2">' + escapeHtml(act.dialog) + '</textarea><div id="xsact-ca-dialog" class="xsact-ca-dialog-rich" contenteditable="true" tabindex="0" data-placeholder="如：轻轻咬住了 对方 的耳朵"></div></div>';
+        html += '<div class="xsact-ca-hint">' +
+            '<div class="xsact-ca-hint-title">可用占位符（点击插入）</div>' +
+            '<div class="xsact-ca-hint-btns">' +
+            '<button class="xsact-ca-token" data-token="{SourceCharacter}"><span class="xsact-ca-token-dot self"></span>自己</button>' +
+            '<button class="xsact-ca-token" data-token="{TargetCharacter}"><span class="xsact-ca-token-dot other"></span>对方</button>' +
+            '</div>' +
             '</div>';
+        html += '<div class="xsact-combo-field"><label>对自己时显示</label><textarea id="xsact-ca-dialogself-raw" class="xsact-ca-raw" rows="2">' + escapeHtml(act.dialogSelf || '') + '</textarea><div id="xsact-ca-dialogself" class="xsact-ca-dialog-rich" contenteditable="true" tabindex="0" data-placeholder="如：被轻轻咬住了耳朵"></div></div>';
         html += '<div class="xsact-ca-preview" id="xsact-ca-preview"></div>';
         html += '<div class="xsact-combo-actions">' +
             '<button class="xsact-combo-save-btn" id="xsact-ca-save">保存</button>' +
@@ -1623,13 +1827,25 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         html += '</div>';
         listEl.innerHTML = html;
 
-        var lastFocusedInput = listEl.querySelector('#xsact-ca-dialog-raw');
-        function trackFocus(richEl, rawEl) {
-            if (richEl) richEl.addEventListener('focus', function() { lastFocusedInput = rawEl; });
+        var lastFocusedRich = listEl.querySelector('#xsact-ca-dialog');
+        var lastFocusedRaw = listEl.querySelector('#xsact-ca-dialog-raw');
+        function trackFocus(el, rawId) {
+            if (!el) return;
+            el.addEventListener('focus', function() { lastFocusedRich = el; lastFocusedRaw = listEl.querySelector('#' + rawId); });
+            el.addEventListener('click', function() { lastFocusedRich = el; lastFocusedRaw = listEl.querySelector('#' + rawId); });
         }
-        trackFocus(listEl.querySelector('#xsact-ca-name'), listEl.querySelector('#xsact-ca-name'));
-        trackFocus(listEl.querySelector('#xsact-ca-dialog'), listEl.querySelector('#xsact-ca-dialog-raw'));
-        trackFocus(listEl.querySelector('#xsact-ca-dialogself'), listEl.querySelector('#xsact-ca-dialogself-raw'));
+        trackFocus(listEl.querySelector('#xsact-ca-name'), 'xsact-ca-name');
+        trackFocus(listEl.querySelector('#xsact-ca-dialog'), 'xsact-ca-dialog-raw');
+        trackFocus(listEl.querySelector('#xsact-ca-dialogself'), 'xsact-ca-dialogself-raw');
+        // 对 raw textarea（调试或自动化场景）也同步跟踪
+        ['#xsact-ca-dialog-raw', '#xsact-ca-dialogself-raw'].forEach(function(sel) {
+            var rawEl = listEl.querySelector(sel);
+            if (!rawEl) return;
+            rawEl.addEventListener('focus', function() {
+                lastFocusedRaw = rawEl;
+                lastFocusedRich = listEl.querySelector('#' + rawEl.id.replace(/-raw$/, ''));
+            });
+        });
 
         function renderRichText(raw) {
             return escapeHtml(raw)
@@ -1668,6 +1884,8 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         }
         function insertTokenPill(token, richEl) {
             var label = token === '{SourceCharacter}' ? '自己' : '对方';
+            if (!richEl || richEl.contentEditable !== 'true') return;
+            richEl.focus();
             var sel = window.getSelection();
             var range;
             if (!sel.rangeCount || !richEl.contains(sel.getRangeAt(0).commonAncestorContainer)) {
@@ -1679,6 +1897,8 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             } else {
                 range = sel.getRangeAt(0);
             }
+            // 删除当前选区内容（如用户选中了已有占位符 pill）
+            range.deleteContents();
             var pill = document.createElement('span');
             pill.className = 'xsact-token-pill';
             pill.contentEditable = 'false';
@@ -1687,12 +1907,13 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             var zwsp = document.createElement('span');
             zwsp.className = 'xsact-zwsp';
             zwsp.textContent = '\u200B';
+            var space = document.createTextNode(' ');
             var frag = document.createDocumentFragment();
             frag.appendChild(pill);
             frag.appendChild(zwsp);
-            range.deleteContents();
+            frag.appendChild(space);
             range.insertNode(frag);
-            range.setStartAfter(zwsp);
+            range.setStartAfter(space);
             range.collapse(true);
             sel.removeAllRanges();
             sel.addRange(range);
@@ -1701,10 +1922,13 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             refreshPreview();
         }
         function insertToken(token) {
-            var rawEl = lastFocusedInput || listEl.querySelector('#xsact-ca-dialog-raw');
-            if (!rawEl) return;
-            var richEl = listEl.querySelector('#' + rawEl.id.replace(/-raw$/, ''));
+            // 占位符只应插入到两个 contenteditable 富文本框中；若最后聚焦的是名称输入框等，回退到默认对他人框
+            var richEl = lastFocusedRich;
+            if (!richEl || richEl.contentEditable !== 'true') richEl = listEl.querySelector('#xsact-ca-dialog');
             if (!richEl) {
+                // 兜底：直接操作 raw textarea（对自动化/测试友好）
+                var rawEl = lastFocusedRaw || listEl.querySelector('#xsact-ca-dialog-raw');
+                if (!rawEl) return;
                 var start = rawEl.selectionStart || 0;
                 var end = rawEl.selectionEnd || 0;
                 var before = rawEl.value.substring(0, start);
@@ -1723,7 +1947,10 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         syncRawToRich(listEl.querySelector('#xsact-ca-dialogself-raw'));
 
         listEl.querySelectorAll('.xsact-ca-token').forEach(function(btn) {
+            // mousedown 阻止默认行为，防止按钮抢走富文本框焦点，避免插入后输入框"失活"
+            btn.addEventListener('mousedown', function(e) { e.preventDefault(); });
             btn.addEventListener('click', function(e) {
+                e.preventDefault();
                 e.stopPropagation();
                 insertToken(btn.dataset.token);
             });
@@ -1755,15 +1982,20 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             var tgt = (charObj && (charObj.Nickname || charObj.Name)) || '对方';
             // 根据“谁能使用”显示对应文本，any 时双行展示两种情形
             var preview;
+            function resolveText(text, source, target) {
+                return text.replace(/\{SourceCharacter\}/g, source).replace(/\{TargetCharacter\}/g, target);
+            }
             if (scope === 'self') {
+                // 仅自己：目标也是玩家自己，因此“对方”同样解析为玩家
                 var textSelf = (dlgSelf.trim() ? dlgSelf : dlg).replace(/\{SourceCharacter\}/g, src).replace(/\{TargetCharacter\}/g, src);
                 preview = textSelf; // 自己对自己，文本里已含角色，直接显示完整句子
             } else if (scope === 'any') {
-                var textOther = dlg.replace(/\{SourceCharacter\}/g, src).replace(/\{TargetCharacter\}/g, tgt);
-                var textSelf = (dlgSelf.trim() ? dlgSelf : dlg).replace(/\{SourceCharacter\}/g, src).replace(/\{TargetCharacter\}/g, src);
+                var textOther = resolveText(dlg, src, tgt);
+                // 对自己时显示：保留源视角，因此“对方”仍指向实际目标（而非玩家自己）
+                var textSelf = (dlgSelf.trim() ? dlgSelf : dlg).replace(/\{SourceCharacter\}/g, src).replace(/\{TargetCharacter\}/g, tgt);
                 preview = '对他人：' + textOther + '\n对自己：' + textSelf;
             } else {
-                preview = dlg.replace(/\{SourceCharacter\}/g, src).replace(/\{TargetCharacter\}/g, tgt);
+                preview = resolveText(dlg, src, tgt);
             }
             var pv = listEl.querySelector('#xsact-ca-preview');
             if (pv) pv.textContent = preview;
@@ -1923,6 +2155,69 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         } catch (e) {
             console.warn('[XSAct-QA] 导出自定义动作失败:', e.message);
             toast('导出失败：' + e.message, '#FF5C5C');
+        }
+    }
+
+    /** 从本地 JSON 文件导入自定义动作 */
+    function importCustomFromFile(file) {
+        try {
+            var reader = new FileReader();
+            reader.onload = function(ev) {
+                try {
+                    var json = ev.target.result;
+                    var arr = JSON.parse(json);
+                    if (!Array.isArray(arr)) { toast('文件格式错误：应为动作对象数组', '#FF5C5C'); return; }
+                    var imported = 0, updated = 0;
+                    arr.forEach(function(item) {
+                        if (!item || !item.name || !item.group) return;
+                        var source = item.source || 'native';
+                        var dialog = typeof item.dialog === 'string' ? item.dialog : (item.Dialog || '');
+                        var dialogSelf = typeof item.dialogSelf === 'string' ? item.dialogSelf : (item.DialogSelf || '');
+                        var scope = item.scope || 'other';
+                        var visible = typeof item.visible === 'boolean' ? item.visible : true;
+                        var existing = state.customActions.find(function(a) { return a.name === item.name && a.group === item.group; });
+                        if (existing) {
+                            caUnregister(existing);
+                            existing.scope = scope;
+                            existing.dialog = dialog;
+                            existing.dialogSelf = dialogSelf;
+                            existing.visible = visible;
+                            if (item.source) existing.source = item.source;
+                            if (item.echoName) existing.echoName = item.echoName;
+                            if (Array.isArray(item.echoNames)) existing.echoNames = item.echoNames.slice();
+                            upsertCustom(existing);
+                            updated++;
+                        } else {
+                            var ca = {
+                                id: caNewId(),
+                                name: item.name,
+                                scope: scope,
+                                group: item.group,
+                                dialog: dialog,
+                                dialogSelf: dialogSelf,
+                                createdAt: item.createdAt || Date.now(),
+                                source: source,
+                                visible: visible,
+                                echoName: item.echoName || null,
+                                echoNames: Array.isArray(item.echoNames) ? item.echoNames.slice() : []
+                            };
+                            upsertCustom(ca);
+                            imported++;
+                        }
+                    });
+                    registerAllCustomActions();
+                    updateCustomActionPanel(state.selectedTarget);
+                    toast('导入完成：新增 ' + imported + ' 个，更新 ' + updated + ' 个', '#46E0A0');
+                } catch (inner) {
+                    console.warn('[XSAct-QA] 解析 JSON 失败:', inner.message);
+                    toast('JSON 解析失败：' + inner.message, '#FF5C5C');
+                }
+            };
+            reader.onerror = function() { toast('读取文件失败', '#FF5C5C'); };
+            reader.readAsText(file);
+        } catch (e) {
+            console.warn('[XSAct-QA] 导入本地文件失败:', e.message);
+            toast('导入失败：' + e.message, '#FF5C5C');
         }
     }
 
@@ -2325,7 +2620,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
       <div class="xsact-qa-mode-tabs">\
         <button class="xsact-mode-tab active" data-mode="part" title="单部位动作：点人物部位后直接触发">' + svgIcon('target', 14) + '<span>动作</span></button>\
         <button class="xsact-mode-tab" data-mode="combo" title="组合动作：手动拼装多部位动作并一键执行">' + svgIcon('layers', 14) + '<span>组合动作</span></button>\
-        <button class="xsact-mode-tab" data-mode="custom" title="我的动作：创建/管理自定义动作（替代 echo/回声）。当前为测试版(Beta)">' + svgIcon('star', 14) + '<span>我的动作</span><span class="xsact-beta-badge">测试版</span></button>\
+        <button class="xsact-mode-tab" data-mode="custom" title="我的动作：创建/管理自定义动作（替代 echo/回声）。当前为测试版(Beta)">' + svgIcon('custom', 14) + '<span>我的动作</span><span class="xsact-beta-badge">测试版</span></button>\
       </div>\
       <div class="xsact-qa-panel-body" id="xsact-action-list">\
         <div class="xsact-qa-empty">点击左侧 ◀ 按钮选择人物和部位</div>\
@@ -2336,7 +2631,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
     <button class="xsact-qa-mini-btn xsact-toggle-pill" id="xsact-self-btn" title="切换自己模式">' + svgIcon('user', 14) + '<span>自己</span><span class="xsact-pill-dot"></span></button>\
     <button class="xsact-qa-mini-btn xsact-toggle-pill" id="xsact-all-btn" title="切换全员范围：开启后，动作将对房间内所有人执行">' + svgIcon('users', 14) + '<span>全员</span><span class="xsact-pill-dot"></span></button>\
     <button class="xsact-qa-mini-btn xsact-toggle-pill" id="xsact-fav-btn" title="收藏模式：开启后点击动作会加入/取消收藏">' + svgIcon('star', 14) + '<span>收藏</span><span class="xsact-pill-dot"></span></button>\
-    <button class="xsact-qa-mini-btn" id="xsact-fav-clear-btn" title="清空全部收藏动作" data-tooltip-type="danger">' + svgIcon('trash', 14) + '</button>\
+    <button class="xsact-qa-mini-btn" id="xsact-fav-clear-btn" title="清空全部收藏动作" data-tooltip-type="danger">' + svgIcon('favRemove', 14) + '</button>\
     <button class="xsact-qa-mini-btn" id="xsact-x3-btn" title="连续3次">' + svgIcon('bolt', 14) + '<span>×3</span></button>\
     <span class="xsact-version-tag" title="当前插件版本">v' + VERSION + '</span>\
   </div>\
@@ -3068,8 +3363,30 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         });
     }
 
-    /** 统一内联 SVG 图标（无 emoji）。stroke 继承 currentColor。 */
+    /** 统一内联 SVG 图标（无 emoji）。stroke 继承 currentColor；部分实心图标单独处理。 */
     function svgIcon(name, size) {
+        // 我的动作标签图标：糖果/魔法棒（用户提供的矢量图，实心）。
+        if (name === 'custom') {
+            return '<svg class="xsact-ico" viewBox="0 0 1024 1024" width="' + size + '" height="' + size +
+                '" fill="currentColor" aria-hidden="true">' +
+                '<path d="M727.008 487.232l194.016-184.32a99.2 99.2 0 0 0 0-140.288l-48.416-48.416a99.2 99.2 0 0 0-138.464-1.76L544.64 292.384l-184.064-196.64-1.504-1.568a64.832 64.832 0 0 0-91.712-0.384L129.184 231.968a64.8 64.8 0 0 0-1.12 90.144l181.344 193.728-171.456 162.88a99.264 99.264 0 0 0-28.256 49.28l-28.992 123.744a65.632 65.632 0 0 0 82.4 77.92l119.296-35.136a99.744 99.744 0 0 0 40.32-23.232l169.056-160.608 203.616 217.536 1.504 1.568a64.832 64.832 0 0 0 91.712 0.384l138.176-138.176a64.8 64.8 0 0 0 1.12-90.144l-200.896-214.624zM319.424 786.176l-90.112-90.112a31.488 31.488 0 0 0-9.792-6.496L667.104 264.352l94.272 94.272c1.408 1.408 3.168 2.08 4.768 3.168L319.424 786.176zM778.208 158.784a35.2 35.2 0 0 1 49.12 0.64l48.416 48.416c13.76 13.76 13.76 36.032-0.64 50.4l-64.448 61.216c-1.28-2.08-2.24-4.288-4.064-6.112l-93.12-93.12 64.736-61.44zM288.512 399.904c8-0.128 16-3.168 22.112-9.28l48-48a31.968 31.968 0 1 0-45.248-45.248l-48 48a31.68 31.68 0 0 0-8.928 20.256L174.816 278.4c-0.512-0.512-0.512-1.024-0.352-1.152L312.64 139.04c0.128-0.128 0.672-0.128 1.248 0.416l184.384 196.992-142.432 135.328-67.328-71.872zM145.024 868.288a1.6 1.6 0 0 1-2.016-1.92l28.992-123.744c0.992-4.16 2.944-7.968 5.312-11.488a31.808 31.808 0 0 0 6.752 10.144l88.288 88.288a35.072 35.072 0 0 1-8 3.552l-119.328 35.168z m598.336 16.672c-0.128 0.128-0.672 0.128-1.248-0.416l-125.6-134.176a31.232 31.232 0 0 0 14.08-7.712l48-48a31.968 31.968 0 1 0-45.248-45.248l-48 48a31.68 31.68 0 0 0-7.296 11.904l-39.904-42.656 142.432-135.328 200.576 214.304c0.48 0.512 0.48 1.024 0.352 1.152l-138.144 138.176z"/>' +
+                '</svg>';
+        }
+        if (name === 'favRemove') {
+            return '<svg class="xsact-ico" viewBox="0 0 1024 1024" width="' + size + '" height="' + size +
+                '" fill="currentColor" aria-hidden="true">' +
+                '<path d="M481.408 62.037333a34.133333 34.133333 0 0 1 61.184 0l111.957333 226.773334a34.133333 34.133333 0 0 0 13.781334 14.592 341.418667 341.418667 0 0 0-238.378667 507.733333L272.213333 894.037333a34.133333 34.133333 0 0 1-49.493333-35.968l42.752-249.258666a34.133333 34.133333 0 0 0-9.813333-30.208L74.538667 402.048a34.133333 34.133333 0 0 1 18.901333-58.197333l250.282667-36.394667a34.133333 34.133333 0 0 0 25.685333-18.645333l111.957333-226.773334z"/>' +
+                '<path d="M725.333333 896a256 256 0 1 0 0-512 256 256 0 0 0 0 512z m-85.333333-298.666667h170.666667a42.666667 42.666667 0 1 1 0 85.333334h-170.666667a42.666667 42.666667 0 1 1 0-85.333334z"/>' +
+                '</svg>';
+        }
+        // 批量编辑图标：文档 + 铅笔（用户提供的矢量图，实心）。
+        if (name === 'bulkEdit') {
+            return '<svg class="xsact-ico" viewBox="0 0 1024 1024" width="' + size + '" height="' + size +
+                '" fill="currentColor" aria-hidden="true">' +
+                '<path d="M957.3 147L860 49.7c-13.6-13.6-35.7-13.7-49.4-0.1L437.5 418.7c-4.8 4.8-8.1 10.8-9.6 17.4l-28.4 130.2a34.92 34.92 0 0 0 10 32.7c6.6 6.3 15.3 9.8 24.2 9.8 3 0 5.9-0.4 8.9-1.1l125.7-32.9c6-1.6 11.4-4.7 15.8-9l373.1-369.1c6.6-6.6 10.4-15.5 10.4-24.8-0.1-9.3-3.7-18.3-10.3-24.9zM541.5 509.4L480 525.5l14-64.3 341-337.3 47.8 47.8-341.3 337.7z"/>' +
+                '<path d="M888.3 442.8c-19.3 0-35 15.7-35 35v267H248V203h215.1c19.3 0 35-15.7 35-35s-15.7-35-35-35H213c-19.3 0-35 15.7-35 35v135.1H96.1c-19.3 0-35 15.7-35 35v590.1c0 19.3 15.7 35 35 35h675.4c19.3 0 35-15.7 35-35V814.8h81.9c19.3 0 35-15.7 35-35v-302c-0.1-19.3-15.8-35-35.1-35zM736.4 893.3H131.1V373.2H178v406.6c0 19.3 15.7 35 35 35h523.4v78.5z"/>' +
+                '</svg>';
+        }
         size = size || 16;
         var P = {
             close:    '<path d="M6 6l12 12M18 6L6 18"/>',
@@ -3097,7 +3414,11 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>',
             upload:   '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>',
             sun:      '<circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>',
-            moon:     '<path d="M21 12.79A9 9 0 1 1 11.21 3a7 7 0 0 0 9.79 9.79z"/>'
+            moon:     '<path d="M21 12.79A9 9 0 1 1 11.21 3a7 7 0 0 0 9.79 9.79z"/>',
+            edit:     '<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z"/>',
+            power:    '<path d="M12 2v10"/><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/>',
+            toggleOff:'<path d="M6 4h12a8 8 0 0 1 0 16H6a8 8 0 0 1 0-16z" fill="none"/><circle cx="6" cy="12" r="4" fill="currentColor" stroke="none"/>',
+            toggleOn: '<path d="M6 4h12a8 8 0 0 1 0 16H6a8 8 0 0 1 0-16z" fill="none"/><circle cx="18" cy="12" r="4" fill="currentColor" stroke="none"/>'
         };
         var inner = P[name] || '';
         return '<svg class="xsact-ico" viewBox="0 0 24 24" width="' + size + '" height="' + size +
@@ -3756,18 +4077,26 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             '.xsact-ca-view{display:flex;flex-direction:column;gap:12px;width:100%;min-width:0;padding:2px 0;}',
 
             '.xsact-ca-toolbar{display:flex;align-items:center;gap:8px;width:100%;min-width:0;}',
-            '.xsact-ca-search{flex:1;min-width:0;padding:9px 12px;border-radius:8px;border:1px solid var(--xs-border);background:var(--xs-input-bg);color:var(--xs-text);font-size:13px;}',
+            '.xsact-ca-search{flex:1;min-width:0;padding:9px 12px;border-radius:8px;border:1px solid var(--xs-border);background:var(--xs-input-bg);color:var(--xs-text);font-size:13px;transition:opacity .15s;}',
             '.xsact-ca-search:focus{outline:none;border-color:var(--xs-accent);}',
+            '.xsact-ca-search.is-hidden{visibility:hidden;pointer-events:none;opacity:0;}',
             '.xsact-ca-toolbar-btns{display:flex;gap:6px;flex-shrink:0;}',
             '.xsact-ca-toolbar-btns button{display:flex;align-items:center;justify-content:center;gap:5px;width:34px;height:34px;padding:0;border-radius:8px;border:1px solid var(--xs-border);background:var(--xs-btn-bg);color:var(--xs-text-dim);cursor:pointer;font-size:12px;transition:background .15s,border-color .15s,color .15s;}',
             '.xsact-ca-toolbar-btns button:hover{background:var(--xs-hover);border-color:var(--xs-border-strong);color:var(--xs-text);}',
             '.xsact-ca-toolbar-btns button.xsact-ca-new{width:auto;padding:0 12px;background:rgba(255,92,122,0.14);border-color:rgba(255,92,122,0.45);color:#FF8FA6;}',
             '.xsact-ca-toolbar-btns button.xsact-ca-new:hover{background:rgba(255,92,122,0.24);color:#FFB3C6;}',
 
+            '.xsact-ca-import-wrap{position:relative;display:flex;align-items:center;}',
+            '.xsact-ca-import-menu{position:absolute;top:calc(100% + 6px);right:0;z-index:100;display:flex;flex-direction:column;gap:4px;min-width:150px;padding:6px;border-radius:8px;background:var(--xs-panel-bg);border:1px solid var(--xs-border);box-shadow:0 8px 24px rgba(0,0,0,0.35);}',
+            '.xsact-ca-import-menu.hidden{display:none;}',
+            '.xsact-ca-import-menu button{width:100%;justify-content:flex-start;padding:8px 10px;border-radius:6px;border:1px solid transparent;background:transparent;color:var(--xs-text);font-size:12px;text-align:left;cursor:pointer;transition:background .15s,border-color .15s;}',
+            '.xsact-ca-import-menu button:hover{background:var(--xs-hover);border-color:var(--xs-border);}',
+            '.xsact-ca-file-input{position:absolute;opacity:0;width:0;height:0;pointer-events:none;}',
+
             '.xsact-ca-beta{font-size:11px;line-height:1.55;color:var(--xs-accent-text);background:rgba(var(--xs-accent-rgb),0.10);border:1px solid rgba(var(--xs-accent-rgb),0.30);border-left:3px solid var(--xs-accent);border-radius:8px;padding:10px 12px;}',
 
             '.xsact-ca-list{display:flex;flex-direction:column;gap:10px;width:100%;}',
-            '.xsact-ca-card{display:grid;grid-template-columns:1fr auto;align-items:center;gap:12px;padding:12px 14px;border-radius:10px;background:var(--xs-card-bg);border:1px solid var(--xs-border);transition:border-color .15s,background .15s,transform .1s;min-width:0;}',
+            '.xsact-ca-card{display:grid;grid-template-columns:1fr auto;align-items:center;gap:10px;padding:12px 14px;border-radius:10px;background:var(--xs-card-bg);border:1px solid var(--xs-border);transition:border-color .15s,background .15s,transform .1s;min-width:0;}',
             '.xsact-ca-card:hover{border-color:var(--xs-border-strong);background:var(--xs-hover);transform:translateY(-1px);}',
             '.xsact-ca-info{display:flex;flex-direction:column;gap:5px;min-width:0;overflow:hidden;}',
             '.xsact-ca-title{display:flex;align-items:center;gap:8px;min-width:0;}',
@@ -3782,6 +4111,31 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             '.xsact-ca-src.echo{background:rgba(255,200,90,0.16);color:#FFD87A;}',
             '.xsact-ca-src.native{background:rgba(160,140,255,0.16);color:#C4B8FF;}',
             '.xsact-ca-card.is-hidden{opacity:.55;border-style:dashed;}',
+            '.xsact-ca-editmode.is-active{background:rgba(255,92,122,0.22);border-color:rgba(255,92,122,0.55);color:#FFB3C6;}',
+            '.xsact-ca-toggleall:hover{background:rgba(255,92,122,0.18);border-color:rgba(255,92,122,0.45);color:#FFB3C6;}',
+            '.xsact-ca-toggleall.is-on{background:rgba(255,92,122,0.22);border-color:rgba(255,92,122,0.55);color:#FFB3C6;}',
+            '.xsact-ca-toggleall.is-on:hover{background:rgba(255,92,122,0.32);color:#FFD6DF;}',
+            '.xsact-ca-card.is-edit{grid-template-columns:auto 1fr auto;cursor:pointer;user-select:none;}',
+            '.xsact-ca-card.is-edit:hover{transform:none;background:var(--xs-hover);}',
+            '.xsact-ca-handle{display:flex;align-items:center;justify-content:center;width:20px;color:var(--xs-text-dim);cursor:grab;flex-shrink:0;}',
+            '.xsact-ca-handle:active{cursor:grabbing;}',
+            '.xsact-ca-card.is-selected{border-color:var(--xs-accent);background:rgba(var(--xs-accent-rgb),0.12);box-shadow:0 0 0 1px var(--xs-accent) inset;}',
+            '.xsact-ca-check{display:none;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:var(--xs-accent);color:#fff;flex-shrink:0;}',
+            '.xsact-ca-card.is-selected .xsact-ca-check{display:flex;}',
+            '.xsact-ca-card.dragging{opacity:.45;outline:2px dashed var(--xs-accent);outline-offset:-2px;}',
+            '.xsact-ca-vis-dot{font-size:11px;padding:1px 8px;border-radius:999px;background:var(--xs-border-strong);color:var(--xs-text-dim);white-space:nowrap;}',
+            '.xsact-ca-vis-dot.on{background:rgba(70,224,160,0.18);color:#46E0A0;}',
+            '.xsact-ca-vis-dot.off{background:rgba(255,92,92,0.16);color:#FF9C9C;}',
+            '.xsact-ca-select-all{padding:6px 12px;border-radius:6px;border:1px solid var(--xs-border);background:var(--xs-btn-bg);color:var(--xs-text);font-size:12px;cursor:pointer;transition:background .15s,border-color .15s;white-space:nowrap;}',
+            '.xsact-ca-select-all:hover{background:var(--xs-hover);border-color:var(--xs-border-strong);}',
+            '.xsact-ca-batchbar{display:flex;align-items:center;gap:10px;width:100%;min-width:0;padding:9px 12px;border-radius:8px;background:var(--xs-panel-bg-2);border:1px solid var(--xs-border);}',
+            '.xsact-ca-selected-count{font-size:12px;color:var(--xs-text-dim);white-space:nowrap;margin-right:auto;}',
+            '.xsact-ca-batch-actions{display:flex;gap:6px;flex-shrink:0;}',
+            '.xsact-ca-batch-actions button{padding:6px 12px;border-radius:6px;border:1px solid var(--xs-border);background:var(--xs-btn-bg);color:var(--xs-text);font-size:12px;cursor:pointer;transition:background .15s,border-color .15s,color .15s;}',
+            '.xsact-ca-batch-actions button:hover:not(:disabled){background:var(--xs-hover);border-color:var(--xs-border-strong);}',
+            '.xsact-ca-batch-actions button:disabled{opacity:.45;cursor:not-allowed;}',
+            '.xsact-ca-batch-del{background:rgba(255,92,92,0.12);border-color:rgba(255,92,92,0.35);color:#FF9C9C;}',
+            '.xsact-ca-batch-del:hover:not(:disabled){background:rgba(255,92,92,0.22);border-color:rgba(255,92,92,0.5);}',
             '.xsact-ca-toggle{display:flex;align-items:center;gap:7px;cursor:pointer;font-size:11px;color:var(--xs-text-dim);}',
             '.xsact-ca-toggle input{position:absolute;opacity:0;width:0;height:0;}',
             '.xsact-ca-toggle-track{width:34px;height:18px;border-radius:999px;background:var(--xs-border-strong);position:relative;transition:background .2s;}',
@@ -3807,9 +4161,15 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             '.xsact-ca-scope button{flex:1;padding:9px 10px;border-radius:8px;border:1px solid var(--xs-border);background:var(--xs-btn-bg);color:var(--xs-text-dim);cursor:pointer;font-size:12px;font-weight:500;transition:all .15s;}',
             '.xsact-ca-scope button:hover{background:var(--xs-hover);border-color:var(--xs-border-strong);color:var(--xs-text);}',
             '.xsact-ca-scope button.active{background:rgba(255,92,122,0.18);border-color:rgba(255,92,122,0.55);color:#FFB3C6;font-weight:600;}',
-            '.xsact-ca-hint{font-size:11px;color:var(--xs-text-dim);line-height:1.5;display:flex;align-items:center;flex-wrap:wrap;gap:6px;min-height:0;}',
-            '.xsact-ca-hint code,.xsact-ca-token{background:var(--xs-input-bg);padding:3px 8px;border-radius:5px;color:#FFB3C6;font-size:11px;border:1px solid var(--xs-border);cursor:pointer;transition:background .15s,border-color .15s,color .15s;white-space:nowrap;}',
-            '.xsact-ca-token:hover{background:rgba(255,92,122,0.14);border-color:rgba(255,92,122,0.45);color:#FFD6DF;}',
+            '.xsact-ca-hint{display:flex;align-items:baseline;justify-content:flex-start;gap:8px;flex-wrap:wrap;padding:10px 14px;border-radius:10px;border:1px solid var(--xs-border-strong);background:var(--xs-panel-bg-2);box-shadow:0 1px 4px rgba(0,0,0,0.08);}',
+            '.xsact-ca-hint-title{font-size:12px;font-weight:600;color:var(--xs-accent-text);letter-spacing:0.04em;text-transform:uppercase;white-space:nowrap;line-height:1;}',
+            '.xsact-ca-hint-btns{display:flex;gap:8px;flex-wrap:wrap;}',
+            '.xsact-ca-token{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:999px;border:1px solid var(--xs-border);background:var(--xs-input-bg);color:var(--xs-text);font-size:12px;font-weight:500;cursor:pointer;transition:all .15s ease;white-space:nowrap;user-select:none;-webkit-user-select:none;box-shadow:0 1px 2px rgba(0,0,0,0.08);}',
+            '.xsact-ca-token:hover{background:rgba(255,92,122,0.12);border-color:rgba(255,92,122,0.5);color:#FFD6DF;box-shadow:0 2px 8px rgba(255,92,122,0.18);transform:translateY(-1px);}',
+            '.xsact-ca-token:active{transform:translateY(0) scale(0.97);box-shadow:0 1px 3px rgba(255,92,122,0.12);}',
+            '.xsact-ca-token-dot{width:7px;height:7px;border-radius:50%;box-shadow:inset 0 0 0 1px rgba(255,255,255,0.12);}',
+            '.xsact-ca-token-dot.self{background:#46E0A0;}',
+            '.xsact-ca-token-dot.other{background:#FF5C7A;}',
             '.xsact-ca-part-display{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 12px;border-radius:8px;border:1px solid var(--xs-border-strong);background:var(--xs-input-bg);cursor:pointer;transition:background .15s,border-color .15s;}',
             '.xsact-ca-part-display:hover{background:var(--xs-hover);border-color:var(--xs-accent);}',
             '.xsact-ca-part-label{font-size:13px;color:var(--xs-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}',
@@ -3835,7 +4195,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             '.xsact-ca-raw{display:none;}',
             '.xsact-ca-editor .xsact-ca-dialog-rich{min-height:54px;max-height:160px;line-height:1.5;white-space:pre-wrap;word-break:break-word;overflow:auto;outline:none;}',
             '.xsact-ca-editor .xsact-ca-dialog-rich:empty:before{content:attr(data-placeholder);color:var(--xs-text-dim);pointer-events:none;}',
-            '.xsact-token-pill{display:inline-block;background:rgba(255,92,122,0.18);border:1px solid rgba(255,92,122,0.45);color:#FFD6DF;border-radius:5px;padding:1px 5px;font-size:12px;line-height:1.3;cursor:default;user-select:none;-webkit-user-select:none;vertical-align:middle;margin:0 1px;}',
+            '.xsact-token-pill{display:inline-flex;align-items:center;background:rgba(255,92,122,0.18);border:1px solid rgba(255,92,122,0.45);color:#FFD6DF;border-radius:5px;padding:1px 5px;font-size:12px;line-height:1;cursor:default;user-select:none;-webkit-user-select:none;vertical-align:baseline;margin:0 2px;}',
             '.xsact-zwsp{display:inline;font-size:0;line-height:0;}',
 
             /* 底部操作栏 */

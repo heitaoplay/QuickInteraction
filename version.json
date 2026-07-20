@@ -1,12 +1,22 @@
 {
-  "version": "1.0.8",
-  "date": "2026-07-20",
+  "version": "1.1.0",
+  "date": "2026-07-21",
   "severity": "normal",
   "summary": [
-    "【新增】自定义 tooltip：替换原生 title——统一玻璃拟态风格、视口自动翻转、双行信息层级（标题 + 说明），删除/清空等危险操作以红色高亮；仅作用于本插件界面，不影响 BC 原生提示",
-    "【修复】从 echo 导入的原始动作（如「埋怀里」）被点击时，接收方不再显示 MISSING TEXT——已屏蔽的 echo 原始动作改为发送内嵌文本包，确保跨客户端都能看到动作内容",
-    "【修复】echo 动作名解析更准确：能正确识别 XSAct_ / 笨蛋笨Luzi_ 等原始 Activity 名，减少原始名漏屏蔽的情况",
-    "【优化】动作文本兜底兼容 echo 的 {SourceCharacter}/{TargetCharacter} 花括号占位符"
+    "【新增】「我的动作」列表交互重设计：移除勾选框改为点击卡片高亮多选；新增「编辑模式」支持批量关闭 / 批量删除、全选 / 取消全选、拖拽排序",
+    "【新增】拖拽排序持久化：编辑模式下拖动自定义动作调整顺序，结果写入账号 / 本地，刷新或重载后顺序保留",
+    "【新增】一键开关全部：工具栏新增按钮，一键将所有自定义动作全部开启或全部关闭，状态即时同步",
+    "【优化】工具栏图标化：「编辑模式」「一键开关」改为无文字图标按钮避免文字溢出；编辑模式搜索框以 visibility 占位保留，按钮组位置不跳动",
+    "【优化】「我的动作」标签图标更新为统一风格糖果 / 魔法棒 SVG；占位符区块移至「对他人时显示」与「对自己时显示」之间，配绿 (自己) / 粉 (对方) 药丸按钮与悬停、点击反馈",
+    "【修复】预览变量：修复「对自己时显示」预览中「对方」变量误解析为玩家自己的问题，按作用域正确替换 {TargetCharacter}",
+    "【修复】书签 / 控制台安装静默失效：新增加载反馈与前提说明（先进入已登录聊天室再点书签），README 同步更新"
   ],
-  "detailsUrl": "https://github.com/heitaoplay/QuickInteraction/releases/tag/v1.0.8"
+  "announcement": {
+    "id": "2026-07-21-release-v1.1.0",
+    "severity": "info",
+    "title": "XSAct-QuickAction v1.1.0 已发布",
+    "message": "「我的动作」列表交互重设计、拖拽排序持久化、一键开关全部、工具栏图标化，并修复预览变量与书签静默失效问题。",
+    "detailsUrl": "https://github.com/heitaoplay/QuickInteraction/releases/tag/v1.1.0"
+  },
+  "detailsUrl": "https://github.com/heitaoplay/QuickInteraction/releases/tag/v1.1.0"
 }
