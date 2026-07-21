@@ -33,25 +33,23 @@
        否则 BC 原生活动面板会显示 MISSING TEXT IN "ActivityDictionary ..." ===== */
     // 自定义动作字典兜底：ActivityDictionaryText 在 R130+ 实际从 TextCache.loader.cache 读取，
     // 仅写全局数组或 loader 自有属性无效（表现为原生活动面板 MISSING）。
-    // 因此两条腿都做：① 写入 loader.cache（覆盖内部直接读 cache 的路径）；
-    // ② 猴子补丁 window.ActivityDictionaryText，用 Map 兜底（覆盖被局部引用/缓存重建的路径）。
-    var caDictMap = (typeof Map !== 'undefined') ? new Map() : null;
-    var caPatched = false;
-    function caEnsurePatch() {
-        if (caPatched) return;
-        if (typeof window.ActivityDictionaryText !== 'function') return; // BC 尚未就绪，下次调用再试
-        var _orig = window.ActivityDictionaryText;
-        window.ActivityDictionaryText = function (key) {
-            if (caDictMap && caDictMap.has(key)) return caDictMap.get(key);
-            return _orig.apply(this, arguments);
-        };
-        caPatched = true;
-    }
+    // 策略：① 写入 loader.cache（覆盖内部直接读 cache 的路径）；
+    //       ② 写入全局 ActivityDictionary 数组（兼容旧版 BC，并供 02-action-a.js 的 SDK hook 兜底）；
+    //       ③ 调用 patchActivityDictionaryText() 确保 SDK hook 已安装（BCX 兼容，不直接覆盖全局函数）。
     function caSetDict(key, value) {
         if (typeof key !== 'string' || !key || value == null) return;
-        caEnsurePatch();
-        if (caDictMap) caDictMap.set(key, value);
-        // 1. 全局 ActivityDictionary 数组（兼容旧版 BC）
+        // 优先走 BCX 兼容的 SDK hook 兜底；幂等，已安装则直接返回。
+        if (typeof patchActivityDictionaryText === 'function') {
+            try { patchActivityDictionaryText(); } catch (e) { /* 忽略：兜底 hook 安装失败仍继续写 cache/数组 */ }
+        }
+        // 1. R130+ TextCache：必须写入 loader.cache（ActivityDictionaryText 实际读取处）
+        try {
+            var loader = window.ActivityDictionaryLoad && window.ActivityDictionaryLoad();
+            if (loader && loader.cache && typeof loader.cache === 'object') loader.cache[key] = value;
+            else if (loader && typeof loader.set === 'function') loader.set(key, value);
+            else if (loader && typeof loader === 'object') loader[key] = value;
+        } catch (e) {}
+        // 2. 全局 ActivityDictionary 数组（兼容旧版 BC，并给 SDK hook 兜底用）
         if (Array.isArray(window.ActivityDictionary)) {
             var found = false;
             for (var i = 0; i < window.ActivityDictionary.length; i++) {
@@ -60,17 +58,9 @@
             }
             if (!found) window.ActivityDictionary.push([key, value]);
         }
-        // 2. R130+ TextCache：必须写入 loader.cache（ActivityDictionaryText 实际读取处）
-        try {
-            var loader = window.ActivityDictionaryLoad && window.ActivityDictionaryLoad();
-            if (loader && loader.cache && typeof loader.cache === 'object') loader.cache[key] = value;
-            else if (loader && typeof loader.set === 'function') loader.set(key, value);
-            else if (loader && typeof loader === 'object') loader[key] = value;
-        } catch (e) {}
     }
     function caRemoveDict(key) {
         if (typeof key !== 'string' || !key) return;
-        if (caDictMap) caDictMap.delete(key);
         if (Array.isArray(window.ActivityDictionary)) {
             for (var i = window.ActivityDictionary.length - 1; i >= 0; i--) {
                 var e = window.ActivityDictionary[i];
