@@ -2,7 +2,7 @@
 // @name         快捷互动 (QuickInteraction)
 // @name:zh      快捷互动
 // @namespace    https://github.com/heitaoplay/QuickInteraction
-// @version      1.1.1
+// @version      1.1.3
 // @description  Bondage Club - 统一动作操作台。一键进入动作模式，在聊天室场景内直接点人物部位选动作，绕过原生5步嵌套菜单。
 // @author       Tao MUSE
 // @homepageURL  https://github.com/heitaoplay/QuickInteraction
@@ -61,7 +61,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         if (!_serverSyncWarned) { _serverSyncWarned = true; toast('设置同步到服务器失败，已保留在本地', '#FF5C5C'); }
     }
 
-    const VERSION = '1.1.1';
+    const VERSION = '1.1.3';
 
     // ── 存储键 ──
     const S_ENABLED = 'xsact_qa_enabled';
@@ -77,6 +77,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
     const S_TOGGLE_POS = 'xsact_qa_toggle_pos';
     const S_UPDATE_DISMISSED = 'xsact_qa_update_dismissed';
     const S_LAST_ANNOUNCE = 'xsact_qa_last_announce';
+    const S_LAST_ANNOUNCE_VER = 'xsact_qa_last_announce_ver'; // 公告去重：记录上次见到公告时的版本号
     const S_ECHO_SUPPRESS = 'xsact_qa_echo_suppressed'; // 已导入并屏蔽的 echo 原始动作名
 
     // ── 集中状态（单一数据源，消除散落全局变量）──
@@ -1134,6 +1135,86 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             TargetSelf: isOtherOnly ? [] : [act.group]
         };
     }
+    /* ===== 字典注册辅助：自定义动作需要同时注册 Activity 和 Label/Chat 翻译，
+       否则 BC 原生活动面板会显示 MISSING TEXT IN "ActivityDictionary ..." ===== */
+    // 自定义动作字典兜底：ActivityDictionaryText 在 R130+ 实际从 TextCache.loader.cache 读取，
+    // 仅写全局数组或 loader 自有属性无效（表现为原生活动面板 MISSING）。
+    // 因此两条腿都做：① 写入 loader.cache（覆盖内部直接读 cache 的路径）；
+    // ② 猴子补丁 window.ActivityDictionaryText，用 Map 兜底（覆盖被局部引用/缓存重建的路径）。
+    var caDictMap = (typeof Map !== 'undefined') ? new Map() : null;
+    var caPatched = false;
+    function caEnsurePatch() {
+        if (caPatched) return;
+        if (typeof window.ActivityDictionaryText !== 'function') return; // BC 尚未就绪，下次调用再试
+        var _orig = window.ActivityDictionaryText;
+        window.ActivityDictionaryText = function (key) {
+            if (caDictMap && caDictMap.has(key)) return caDictMap.get(key);
+            return _orig.apply(this, arguments);
+        };
+        caPatched = true;
+    }
+    function caSetDict(key, value) {
+        if (typeof key !== 'string' || !key || value == null) return;
+        caEnsurePatch();
+        if (caDictMap) caDictMap.set(key, value);
+        // 1. 全局 ActivityDictionary 数组（兼容旧版 BC）
+        if (Array.isArray(window.ActivityDictionary)) {
+            var found = false;
+            for (var i = 0; i < window.ActivityDictionary.length; i++) {
+                var e = window.ActivityDictionary[i];
+                if (Array.isArray(e) && e[0] === key) { e[1] = value; found = true; break; }
+            }
+            if (!found) window.ActivityDictionary.push([key, value]);
+        }
+        // 2. R130+ TextCache：必须写入 loader.cache（ActivityDictionaryText 实际读取处）
+        try {
+            var loader = window.ActivityDictionaryLoad && window.ActivityDictionaryLoad();
+            if (loader && loader.cache && typeof loader.cache === 'object') loader.cache[key] = value;
+            else if (loader && typeof loader.set === 'function') loader.set(key, value);
+            else if (loader && typeof loader === 'object') loader[key] = value;
+        } catch (e) {}
+    }
+    function caRemoveDict(key) {
+        if (typeof key !== 'string' || !key) return;
+        if (caDictMap) caDictMap.delete(key);
+        if (Array.isArray(window.ActivityDictionary)) {
+            for (var i = window.ActivityDictionary.length - 1; i >= 0; i--) {
+                var e = window.ActivityDictionary[i];
+                if (Array.isArray(e) && e[0] === key) window.ActivityDictionary.splice(i, 1);
+            }
+        }
+        try {
+            var loader = window.ActivityDictionaryLoad && window.ActivityDictionaryLoad();
+            if (loader && loader.cache && typeof loader.cache === 'object') delete loader.cache[key];
+            else if (loader && typeof loader.delete === 'function') loader.delete(key);
+            else if (loader && typeof loader === 'object') delete loader[key];
+        } catch (e) {}
+    }
+    function caRegisterDictionary(act, nm) {
+        try {
+            var group = act.group || 'ItemMouth';
+            var label = act.name || nm;
+            var dialogOther = act.dialog || label;
+            var dialogSelf = act.dialogSelf || act.dialog || label;
+            // 始终注册 Self 与 Other 两套 Label/Chat，避免原生活动面板在任意上下文显示 MISSING。
+            // 自定义动作实际走我们自己的发包逻辑（Type:'Chat'），Chat 句子极少被原生路径使用，
+            // 此处仅为补全字典、杜绝 MISSING 文本。
+            caSetDict('Label-ChatOther-' + group + '-' + nm, label);
+            caSetDict('ChatOther-' + group + '-' + nm, dialogOther);
+            caSetDict('Label-ChatSelf-' + group + '-' + nm, label);
+            caSetDict('ChatSelf-' + group + '-' + nm, dialogSelf);
+        } catch (e) { console.warn('[XSAct-QA] 注册自定义动作字典失败:', e.message); }
+    }
+    function caUnregisterDictionary(act, nm) {
+        try {
+            var group = act.group || 'ItemMouth';
+            caRemoveDict('Label-ChatOther-' + group + '-' + nm);
+            caRemoveDict('ChatOther-' + group + '-' + nm);
+            caRemoveDict('Label-ChatSelf-' + group + '-' + nm);
+            caRemoveDict('ChatSelf-' + group + '-' + nm);
+        } catch (e) {}
+    }
+
     function caRegister(act) {
         // 本 BC 版本无全局 ActivityAdd；活动来自 AssetAllActivities(fam) 数组。
         // 直接把标准活动对象 push 进该数组即可被 findAllowedActivity / ActivityRun 识别。
@@ -1145,8 +1226,13 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             if (!Array.isArray(acts)) return false;
             var actName = caActivityName(act);
             // 避免重复注册
-            if (acts.some(function(a) { return a && a.Name === actName; })) return true;
+            if (acts.some(function(a) { return a && a.Name === actName; })) {
+                // 即使 Activity 已注册，也要确保字典条目存在（刷新页面后可能只恢复了 Activity）
+                caRegisterDictionary(act, actName);
+                return true;
+            }
             acts.push(caBuildActivityDef(act));
+            caRegisterDictionary(act, actName);
             // 同步加入排序索引数组，否则 ActivityAllowedForGroup 排序后第三方插件可能读到 undefined
             if (Array.isArray(ActivityFemale3DCGOrdering) && ActivityFemale3DCGOrdering.indexOf(actName) === -1) {
                 ActivityFemale3DCGOrdering.push(actName);
@@ -1163,6 +1249,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             for (var i = acts.length - 1; i >= 0; i--) {
                 if (acts[i] && acts[i].Name === nm) acts.splice(i, 1);
             }
+            caUnregisterDictionary(act, nm);
             // 同步从排序索引数组移除
             if (Array.isArray(ActivityFemale3DCGOrdering)) {
                 for (var j = ActivityFemale3DCGOrdering.length - 1; j >= 0; j--) {
@@ -4907,15 +4994,21 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             Image: 'Icons/End.png',
             load: function() {},
             run: function() {
-                // 显示设置子页
-                DrawText('快速动作 操作台', 1800, 150, 'Black', 'Gray');
-                var enabled = !!loadSetting(S_ENABLED, false);
-                DrawButton(1815, 190, 380, 30, enabled ? '已开启 (点击关闭)' : '默认开启', '#White', '', () => {
-                    if (state.isActive) exitActionMode();
-                    else enterActionMode();
-                }, '', '', enabled);
-                DrawButton(1815, 230, 90, 90, '', '#White', 'Icons/Exit.png', T.back);
-                if (MouseIn(1815, 230, 90, 90)) PreferenceExit();
+                // 兜底：绘制异常绝不能再冒泡杀掉 BC 主渲染循环（曾导致进入子页后整页卡死）。
+                try {
+                    DrawText('快速动作 操作台', 1800, 150, 'Black', 'Gray');
+                    var enabled = !!loadSetting(S_ENABLED, false);
+                    // 注意 DrawButton 签名：X,Y,W,H,Text,Color,Image,Tooltip,Callback
+                    // 点击回调必须放在第 9 个参数（之前错放在 Tooltip 位导致切换按钮完全无效）
+                    DrawButton(1815, 190, 380, 30, enabled ? '已开启 (点击关闭)' : '默认开启', '#White', '', '', function() {
+                        if (state.isActive) exitActionMode();
+                        else enterActionMode();
+                    });
+                    // 返回按钮：回调 = PreferenceExit（由 BC 在真正点击时触发，不再依赖每帧 MouseIn 探测）
+                    DrawButton(1815, 230, 90, 90, '', '#White', 'Icons/Exit.png', (typeof T !== 'undefined' && T.Back) ? T.Back : '返回', PreferenceExit);
+                } catch (e) {
+                    console.error('[XSAct-QA] 扩展设置子页绘制异常（已隔离，不影响游戏）:', e && e.message);
+                }
             },
             click: function() {},
             unload: function() {},
@@ -5033,7 +5126,10 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                     persist(S_LAST_ANNOUNCE_VER, info.version);
                 }
             }
-        } catch (e) { console.warn('[XSAct-QA] 更新检查网络失败（离线/跨域，已静默跳过）:', e && e.message); }
+        } catch (e) {
+            // 区分真实网络错误与脚本内部错误：脚本 bug（如未定义常量）不应伪装成「网络失败」误导排查
+            console.warn('[XSAct-QA] 更新检查未成功（跳过本次轮询，不影响游戏）:', e && e.message);
+        }
     }
 
     function startUpdateChecker() {

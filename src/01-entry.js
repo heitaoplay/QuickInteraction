@@ -39,7 +39,7 @@
         if (!_serverSyncWarned) { _serverSyncWarned = true; toast('设置同步到服务器失败，已保留在本地', '#FF5C5C'); }
     }
 
-    const VERSION = '1.1.1';
+    const VERSION = '1.1.3';
 
     // ── 存储键 ──
     const S_ENABLED = 'xsact_qa_enabled';
@@ -55,6 +55,7 @@
     const S_TOGGLE_POS = 'xsact_qa_toggle_pos';
     const S_UPDATE_DISMISSED = 'xsact_qa_update_dismissed';
     const S_LAST_ANNOUNCE = 'xsact_qa_last_announce';
+    const S_LAST_ANNOUNCE_VER = 'xsact_qa_last_announce_ver'; // 公告去重：记录上次见到公告时的版本号
     const S_ECHO_SUPPRESS = 'xsact_qa_echo_suppressed'; // 已导入并屏蔽的 echo 原始动作名
 
     // ── 集中状态（单一数据源，消除散落全局变量）──

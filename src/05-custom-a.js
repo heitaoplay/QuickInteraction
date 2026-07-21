@@ -29,6 +29,86 @@
             TargetSelf: isOtherOnly ? [] : [act.group]
         };
     }
+    /* ===== 字典注册辅助：自定义动作需要同时注册 Activity 和 Label/Chat 翻译，
+       否则 BC 原生活动面板会显示 MISSING TEXT IN "ActivityDictionary ..." ===== */
+    // 自定义动作字典兜底：ActivityDictionaryText 在 R130+ 实际从 TextCache.loader.cache 读取，
+    // 仅写全局数组或 loader 自有属性无效（表现为原生活动面板 MISSING）。
+    // 因此两条腿都做：① 写入 loader.cache（覆盖内部直接读 cache 的路径）；
+    // ② 猴子补丁 window.ActivityDictionaryText，用 Map 兜底（覆盖被局部引用/缓存重建的路径）。
+    var caDictMap = (typeof Map !== 'undefined') ? new Map() : null;
+    var caPatched = false;
+    function caEnsurePatch() {
+        if (caPatched) return;
+        if (typeof window.ActivityDictionaryText !== 'function') return; // BC 尚未就绪，下次调用再试
+        var _orig = window.ActivityDictionaryText;
+        window.ActivityDictionaryText = function (key) {
+            if (caDictMap && caDictMap.has(key)) return caDictMap.get(key);
+            return _orig.apply(this, arguments);
+        };
+        caPatched = true;
+    }
+    function caSetDict(key, value) {
+        if (typeof key !== 'string' || !key || value == null) return;
+        caEnsurePatch();
+        if (caDictMap) caDictMap.set(key, value);
+        // 1. 全局 ActivityDictionary 数组（兼容旧版 BC）
+        if (Array.isArray(window.ActivityDictionary)) {
+            var found = false;
+            for (var i = 0; i < window.ActivityDictionary.length; i++) {
+                var e = window.ActivityDictionary[i];
+                if (Array.isArray(e) && e[0] === key) { e[1] = value; found = true; break; }
+            }
+            if (!found) window.ActivityDictionary.push([key, value]);
+        }
+        // 2. R130+ TextCache：必须写入 loader.cache（ActivityDictionaryText 实际读取处）
+        try {
+            var loader = window.ActivityDictionaryLoad && window.ActivityDictionaryLoad();
+            if (loader && loader.cache && typeof loader.cache === 'object') loader.cache[key] = value;
+            else if (loader && typeof loader.set === 'function') loader.set(key, value);
+            else if (loader && typeof loader === 'object') loader[key] = value;
+        } catch (e) {}
+    }
+    function caRemoveDict(key) {
+        if (typeof key !== 'string' || !key) return;
+        if (caDictMap) caDictMap.delete(key);
+        if (Array.isArray(window.ActivityDictionary)) {
+            for (var i = window.ActivityDictionary.length - 1; i >= 0; i--) {
+                var e = window.ActivityDictionary[i];
+                if (Array.isArray(e) && e[0] === key) window.ActivityDictionary.splice(i, 1);
+            }
+        }
+        try {
+            var loader = window.ActivityDictionaryLoad && window.ActivityDictionaryLoad();
+            if (loader && loader.cache && typeof loader.cache === 'object') delete loader.cache[key];
+            else if (loader && typeof loader.delete === 'function') loader.delete(key);
+            else if (loader && typeof loader === 'object') delete loader[key];
+        } catch (e) {}
+    }
+    function caRegisterDictionary(act, nm) {
+        try {
+            var group = act.group || 'ItemMouth';
+            var label = act.name || nm;
+            var dialogOther = act.dialog || label;
+            var dialogSelf = act.dialogSelf || act.dialog || label;
+            // 始终注册 Self 与 Other 两套 Label/Chat，避免原生活动面板在任意上下文显示 MISSING。
+            // 自定义动作实际走我们自己的发包逻辑（Type:'Chat'），Chat 句子极少被原生路径使用，
+            // 此处仅为补全字典、杜绝 MISSING 文本。
+            caSetDict('Label-ChatOther-' + group + '-' + nm, label);
+            caSetDict('ChatOther-' + group + '-' + nm, dialogOther);
+            caSetDict('Label-ChatSelf-' + group + '-' + nm, label);
+            caSetDict('ChatSelf-' + group + '-' + nm, dialogSelf);
+        } catch (e) { console.warn('[XSAct-QA] 注册自定义动作字典失败:', e.message); }
+    }
+    function caUnregisterDictionary(act, nm) {
+        try {
+            var group = act.group || 'ItemMouth';
+            caRemoveDict('Label-ChatOther-' + group + '-' + nm);
+            caRemoveDict('ChatOther-' + group + '-' + nm);
+            caRemoveDict('Label-ChatSelf-' + group + '-' + nm);
+            caRemoveDict('ChatSelf-' + group + '-' + nm);
+        } catch (e) {}
+    }
+
     function caRegister(act) {
         // 本 BC 版本无全局 ActivityAdd；活动来自 AssetAllActivities(fam) 数组。
         // 直接把标准活动对象 push 进该数组即可被 findAllowedActivity / ActivityRun 识别。
@@ -40,8 +120,13 @@
             if (!Array.isArray(acts)) return false;
             var actName = caActivityName(act);
             // 避免重复注册
-            if (acts.some(function(a) { return a && a.Name === actName; })) return true;
+            if (acts.some(function(a) { return a && a.Name === actName; })) {
+                // 即使 Activity 已注册，也要确保字典条目存在（刷新页面后可能只恢复了 Activity）
+                caRegisterDictionary(act, actName);
+                return true;
+            }
             acts.push(caBuildActivityDef(act));
+            caRegisterDictionary(act, actName);
             // 同步加入排序索引数组，否则 ActivityAllowedForGroup 排序后第三方插件可能读到 undefined
             if (Array.isArray(ActivityFemale3DCGOrdering) && ActivityFemale3DCGOrdering.indexOf(actName) === -1) {
                 ActivityFemale3DCGOrdering.push(actName);
@@ -58,6 +143,7 @@
             for (var i = acts.length - 1; i >= 0; i--) {
                 if (acts[i] && acts[i].Name === nm) acts.splice(i, 1);
             }
+            caUnregisterDictionary(act, nm);
             // 同步从排序索引数组移除
             if (Array.isArray(ActivityFemale3DCGOrdering)) {
                 for (var j = ActivityFemale3DCGOrdering.length - 1; j >= 0; j--) {

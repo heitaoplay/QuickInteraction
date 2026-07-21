@@ -266,15 +266,21 @@
             Image: 'Icons/End.png',
             load: function() {},
             run: function() {
-                // 显示设置子页
-                DrawText('快速动作 操作台', 1800, 150, 'Black', 'Gray');
-                var enabled = !!loadSetting(S_ENABLED, false);
-                DrawButton(1815, 190, 380, 30, enabled ? '已开启 (点击关闭)' : '默认开启', '#White', '', () => {
-                    if (state.isActive) exitActionMode();
-                    else enterActionMode();
-                }, '', '', enabled);
-                DrawButton(1815, 230, 90, 90, '', '#White', 'Icons/Exit.png', T.back);
-                if (MouseIn(1815, 230, 90, 90)) PreferenceExit();
+                // 兜底：绘制异常绝不能再冒泡杀掉 BC 主渲染循环（曾导致进入子页后整页卡死）。
+                try {
+                    DrawText('快速动作 操作台', 1800, 150, 'Black', 'Gray');
+                    var enabled = !!loadSetting(S_ENABLED, false);
+                    // 注意 DrawButton 签名：X,Y,W,H,Text,Color,Image,Tooltip,Callback
+                    // 点击回调必须放在第 9 个参数（之前错放在 Tooltip 位导致切换按钮完全无效）
+                    DrawButton(1815, 190, 380, 30, enabled ? '已开启 (点击关闭)' : '默认开启', '#White', '', '', function() {
+                        if (state.isActive) exitActionMode();
+                        else enterActionMode();
+                    });
+                    // 返回按钮：回调 = PreferenceExit（由 BC 在真正点击时触发，不再依赖每帧 MouseIn 探测）
+                    DrawButton(1815, 230, 90, 90, '', '#White', 'Icons/Exit.png', (typeof T !== 'undefined' && T.Back) ? T.Back : '返回', PreferenceExit);
+                } catch (e) {
+                    console.error('[XSAct-QA] 扩展设置子页绘制异常（已隔离，不影响游戏）:', e && e.message);
+                }
             },
             click: function() {},
             unload: function() {},

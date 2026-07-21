@@ -102,7 +102,10 @@
                     persist(S_LAST_ANNOUNCE_VER, info.version);
                 }
             }
-        } catch (e) { console.warn('[XSAct-QA] 更新检查网络失败（离线/跨域，已静默跳过）:', e && e.message); }
+        } catch (e) {
+            // 区分真实网络错误与脚本内部错误：脚本 bug（如未定义常量）不应伪装成「网络失败」误导排查
+            console.warn('[XSAct-QA] 更新检查未成功（跳过本次轮询，不影响游戏）:', e && e.message);
+        }
     }
 
     function startUpdateChecker() {
