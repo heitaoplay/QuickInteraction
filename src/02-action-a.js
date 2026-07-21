@@ -105,7 +105,7 @@
      * 幂等：重复调用只打一次补丁。
      */
     function patchActivityDictionaryText() {
-        if (window.__XSACT_ADT_PATCHED) return;
+        if (window.__QiAct_ADT_PATCHED) return;
         if (typeof window.ActivityDictionaryText !== 'function' || !Array.isArray(window.ActivityDictionary)) return;
         // 优先用 ModSDK hook（BCX 兼容，不会触发 Unknown mod not using ModSDK 警告）
         if (state.modApi && typeof state.modApi.hookFunction === 'function') {
@@ -124,7 +124,7 @@
                 }
                 return r;
             });
-            window.__XSACT_ADT_PATCHED = true;
+            window.__QiAct_ADT_PATCHED = true;
             logD('[QiAct] 已打 ActivityDictionaryText SDK hook 兜底');
             return;
         }
@@ -145,7 +145,7 @@
             }
             return r;
         };
-        window.__XSACT_ADT_PATCHED = true;
+        window.__QiAct_ADT_PATCHED = true;
         logD('[QiAct] 已打 ActivityDictionaryText 直接兜底补丁（SDK 不可用）');
     }
 

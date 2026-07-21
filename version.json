@@ -1,18 +1,12 @@
 {
-  "version": "1.1.6",
+  "version": "1.1.7",
   "date": "2026-07-21",
   "severity": "normal",
   "summary": [
     "【更名】品牌缩写 XSAct* → QiAct*：Mod 命名空间、调试句柄（__QiAct / __QiAct_Loaded__ 等）、日志前缀、自定义动作卡片来源徽章（原误显示 XSAct，易与小酥的 XSAct_ 混淆）统一改为 QiAct，辨识更清晰",
     "【更名】内部兜底字典键 XSAct_ChatFallback → QiAct_ChatFallback（发送端与接收端成对同步，跨客户端中文动作文本不丢）",
-    "【更名】油猴脚本显示名「快捷互动 (QuickInteraction)」→「快捷互动 (QiAct)」、Loader 名「快捷互动 Loader」→「QiAct Loader」，缩短可见名称；仓库名 QuickInteraction 与更新 URL 保持不变，不影响老用户自动更新"
+    "【更名】油猴脚本显示名「快捷互动 (QuickInteraction)」→「快捷互动 (QiAct)」、Loader 名「快捷互动 Loader」→「QiAct Loader」，缩短可见名称；仓库名 QuickInteraction 与更新 URL 保持不变，不影响老用户自动更新",
+    "【补漏·v1.1.7】补全 v1.1.6 更名遗漏：自定义动作导出文件名 xsact_custom_actions.json → qiact_custom_actions.json（与设计稿对齐）；调试句柄 __XSACT_ADT_PATCHED → __QiAct_ADT_PATCHED（原日志已标 [QiAct] 但句柄名遗漏，现统一）。功能与行为完全不变"
   ],
-  "announcement": {
-    "id": "2026-07-21-rename-v1.1.6",
-    "severity": "normal",
-    "title": "QiAct v1.1.6 品牌更名",
-    "message": "本次更新将插件内部品牌缩写从 XSAct 系列统一更名为 QiAct（如 Mod 命名空间、调试句柄、日志前缀，以及「我的动作」卡片上原本误显示 XSAct 的来源徽章——那个 XSAct 容易和小酥的 XSAct_ 动作前缀搞混，现已更正为 QiAct）。油猴脚本与 Loader 的可见名称也缩短了。功能与行为完全不变，自动更新不受影响。",
-    "detailsUrl": "https://github.com/heitaoplay/QuickInteraction/releases/tag/v1.1.6"
-  },
-  "detailsUrl": "https://github.com/heitaoplay/QuickInteraction/releases/tag/v1.1.6"
+  "detailsUrl": "https://github.com/heitaoplay/QuickInteraction/releases/tag/v1.1.7"
 }

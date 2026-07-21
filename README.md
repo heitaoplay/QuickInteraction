@@ -1,6 +1,6 @@
 ![快捷互动 Banner](docs/assets/banner.svg)
 
-# 快捷互动 · XSAct-QuickAction
+# 快捷互动 · QiAct
 
 > 为 Bondage Club 设计的即时互动工具：点选角色身体部位，一键触发对应动作。
 
@@ -52,7 +52,7 @@ var s=document.createElement('script');s.src='https://heitaoplay.github.io/Quick
 2. 网址填下面整行（复制时不要漏掉开头的 `javascript:`）：
 
 ```
-javascript:(function(){var s=document.createElement('script');s.src='https://heitaoplay.github.io/QuickInteraction/assets/main.js?v='+Date.now();s.onload=function(){setTimeout(function(){if(window.__XSActQA)alert('快捷互动已加载 ✓ 右下角应出现闪电图标');else alert('脚本已注入，但未检测到入口——请确认你正处于 BC 聊天室页面（已登录）');},800);};s.onerror=function(){alert('加载失败：请检查网络，或稍后重试');};document.head.appendChild(s);})();
+javascript:(function(){var s=document.createElement('script');s.src='https://heitaoplay.github.io/QuickInteraction/assets/main.js?v='+Date.now();s.onload=function(){setTimeout(function(){if(window.__QiAct)alert('快捷互动已加载 ✓ 右下角应出现闪电图标');else alert('脚本已注入，但未检测到入口——请确认你正处于 BC 聊天室页面（已登录）');},800);};s.onerror=function(){alert('加载失败：请检查网络，或稍后重试');};document.head.appendChild(s);})();
 ```
 
 3. **先进入 BC 聊天室并登录**，再点一下这个书签即可加载（**每次刷新页面需重新点一次**）

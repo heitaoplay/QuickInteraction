@@ -2,7 +2,7 @@
 // @name         快捷互动 (QiAct)
 // @name:zh      快捷互动
 // @namespace    https://github.com/heitaoplay/QuickInteraction
-// @version      1.1.6
+// @version      1.1.7
 // @description  Bondage Club - 统一动作操作台。一键进入动作模式，在聊天室场景内直接点人物部位选动作，绕过原生5步嵌套菜单。
 // @author       Tao MUSE
 // @homepageURL  https://github.com/heitaoplay/QuickInteraction
@@ -61,7 +61,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         if (!_serverSyncWarned) { _serverSyncWarned = true; toast('设置同步到服务器失败，已保留在本地', '#FF5C5C'); }
     }
 
-    const VERSION = '1.1.6';
+    const VERSION = '1.1.7';
 
     // ── 存储键 ──
     const S_ENABLED = 'xsact_qa_enabled';
@@ -480,7 +480,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
      * 幂等：重复调用只打一次补丁。
      */
     function patchActivityDictionaryText() {
-        if (window.__XSACT_ADT_PATCHED) return;
+        if (window.__QiAct_ADT_PATCHED) return;
         if (typeof window.ActivityDictionaryText !== 'function' || !Array.isArray(window.ActivityDictionary)) return;
         // 优先用 ModSDK hook（BCX 兼容，不会触发 Unknown mod not using ModSDK 警告）
         if (state.modApi && typeof state.modApi.hookFunction === 'function') {
@@ -499,7 +499,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                 }
                 return r;
             });
-            window.__XSACT_ADT_PATCHED = true;
+            window.__QiAct_ADT_PATCHED = true;
             logD('[QiAct] 已打 ActivityDictionaryText SDK hook 兜底');
             return;
         }
@@ -520,7 +520,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             }
             return r;
         };
-        window.__XSACT_ADT_PATCHED = true;
+        window.__QiAct_ADT_PATCHED = true;
         logD('[QiAct] 已打 ActivityDictionaryText 直接兜底补丁（SDK 不可用）');
     }
 
@@ -2368,7 +2368,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             var url = URL.createObjectURL(blob);
             var a = document.createElement('a');
             a.href = url;
-            a.download = 'xsact_custom_actions.json';
+            a.download = 'qiact_custom_actions.json';
             a.click();
             URL.revokeObjectURL(url);
             toast('已导出 ' + state.customActions.length + ' 个动作', '#46E0A0');

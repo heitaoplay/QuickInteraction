@@ -97,7 +97,7 @@
             var url = URL.createObjectURL(blob);
             var a = document.createElement('a');
             a.href = url;
-            a.download = 'xsact_custom_actions.json';
+            a.download = 'qiact_custom_actions.json';
             a.click();
             URL.revokeObjectURL(url);
             toast('已导出 ' + state.customActions.length + ' 个动作', '#46E0A0');

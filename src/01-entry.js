@@ -39,7 +39,7 @@
         if (!_serverSyncWarned) { _serverSyncWarned = true; toast('设置同步到服务器失败，已保留在本地', '#FF5C5C'); }
     }
 
-    const VERSION = '1.1.6';
+    const VERSION = '1.1.7';
 
     // ── 存储键 ──
     const S_ENABLED = 'xsact_qa_enabled';
