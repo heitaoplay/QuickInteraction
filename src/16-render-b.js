@@ -137,7 +137,7 @@
                         // 来源为 LSCG / Liko 的动作会改变可用状态/进度（如进食进度、道具附加），
                         // 执行后立即静默刷新当前部位动作列表以反映最新状态，且不弹任何提示。
                         if (srcKey === 'LSCG' || srcKey === 'LIKO') {
-                            setTimeout(function() { try { updateActionPanel(charObj, partGroup); } catch (_) { console.warn('[XSAct-QA] 延迟刷新动作面板失败（已忽略）:', _ && _.message); } }, 50);
+                            setTimeout(function() { try { updateActionPanel(charObj, partGroup); } catch (_) { console.warn('[QiAct] 延迟刷新动作面板失败（已忽略）:', _ && _.message); } }, 50);
                         } else if (execOk !== false) {
                             toast('已执行：' + getActivityLabel(actName, partGroup), '#46E0A0');
                         }
@@ -159,7 +159,7 @@
                 });
             }
         } catch (panelErr) {
-            console.error('[XSAct-QA] updateActionPanel 渲染失败:', panelErr);
+            console.error('[QiAct] updateActionPanel 渲染失败:', panelErr);
             if (state.actionPanelEl) {
                 var listEl = state.actionPanelEl.querySelector('#xsact-action-list');
                 if (listEl) listEl.innerHTML = '<div class="xsact-qa-empty" style="color:#FF8FA6">动作列表加载出错，请刷新或反馈。<br><small>' + escapeHtml(panelErr.message) + '</small></div>';

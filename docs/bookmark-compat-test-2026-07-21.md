@@ -1,6 +1,6 @@
 # 书签安装方式兼容性测试报告
 
-> 测试对象：XSAct-QuickAction **v1.1.3**（GitHub Pages 线上 `assets/main.js`）
+> 测试对象：QiAct **v1.1.3**（GitHub Pages 线上 `assets/main.js`）
 > 测试日期：2026-07-21
 > 测试人：Senior Developer
 
@@ -26,8 +26,8 @@
 |---|---|---|
 | `load`（script.onload） | `"onload_ok"` | 成功创建 `<script>` 并从 GitHub Pages 加载 main.js |
 | `modRegistered` | `true` | `bcModSdk.registerMod` 成功，BC mod 列表出现「快捷互动」 |
-| `loadedFlag`（`__XSActQA_Loaded__`） | `true` | 防重复守卫标志正常设置 |
-| 控制台 | `[warn][XSAct-QA] 已加载，跳过` | 仅当同页面重复注入时触发（见第四节） |
+| `loadedFlag`（`__QiAct_Loaded__`） | `true` | 防重复守卫标志正常设置 |
+| 控制台 | `[warn][QiAct] 已加载，跳过` | 仅当同页面重复注入时触发（见第四节） |
 
 **结论**：书签安装流程能正确完成插件加载，与油猴无差异。
 
@@ -36,7 +36,7 @@
 ## 三、② 安装后核心功能能否正常调用 ⚠️（代码确认一致，未实机跑 ChatRoom 链路）
 
 书签加载的 `main.js` 执行与油猴**完全相同的初始化路径**（`src/21-init.js`）：
-热重载卸载 → 等 `bcModSdk` → `registerMod` → 等 `Player` 登入 → 加载存储 / 注册自定义动作 / `registerSettings` / `setupHooks` → 暴露 `window.__XSActQA`。
+热重载卸载 → 等 `bcModSdk` → `registerMod` → 等 `Player` 登入 → 加载存储 / 注册自定义动作 / `registerSettings` / `setupHooks` → 暴露 `window.__QiAct`。
 
 **代码层面确认书签不依赖任何油猴专有 API**：
 - 元数据头为 `@grant none`
@@ -54,7 +54,7 @@
 ## 四、③ 与浏览器扩展（油猴）方式是否不一致 🔍（结论：仅两点差异，均良性 / 已说明）
 
 1. **加载时机**：油猴 `@run-at document-end` 自动；书签手动点击。两者都在 BC 页面加载后执行，`registerMod` 均成功 → **无行为差异**。
-2. **重复加载守卫**：`main.js` 顶部 `if (window.__XSActQA_Loaded__) { warn 已加载跳过; return; }`。油猴 + 书签并存时书签会跳过（良性，README 已警告不要同时装）；真实单书签用户页面干净，不触发。
+2. **重复加载守卫**：`main.js` 顶部 `if (window.__QiAct_Loaded__) { warn 已加载跳过; return; }`。油猴 + 书签并存时书签会跳过（良性，README 已警告不要同时装）；真实单书签用户页面干净，不触发。
 3. **扩展设置页（设置-扩展组件-快速动作）**：书签方式同样调用 `registerSettings`（`21-init.js:71`），受 `typeof PreferenceRegisterExtensionSetting === 'undefined'` 守卫；v1.1.3 已修卡死（`run()` 包 `try/catch`），书签用户同享该修复。
 
 **结论**：书签与油猴功能行为一致，无隐性不一致。
@@ -68,7 +68,7 @@
 - **房间内跳转保持**：同 SPA 内房间切换不刷新页面，插件保持 —— 与油猴一致。
 - **注意**：扩展设置页 UI 由插件注册，刷新后插件丢失则该 UI 暂不可见；设置值存账号保留，重新点书签后恢复。
 
-> 实机验证限制：BC `Login` 屏存在自动 reload 循环，未能干净捕获「reload 后 `loadedFlag` 重置」瞬间；但 `window.__XSActQA_Loaded__` 为普通 window 属性，reload 必清空，结合 README 明示，结论确定。
+> 实机验证限制：BC `Login` 屏存在自动 reload 循环，未能干净捕获「reload 后 `loadedFlag` 重置」瞬间；但 `window.__QiAct_Loaded__` 为普通 window 属性，reload 必清空，结合 README 明示，结论确定。
 
 ---
 
@@ -95,7 +95,7 @@
 
 ### 问题 2：油猴与书签不能共存
 - **现象**：同时装油猴版 + 点书签，书签侧命中「已加载，跳过」守卫
-- **复现**：油猴已启本脚本 → 在 BC 页面点书签 → 控制台 `[XSAct-QA] 已加载，跳过`
+- **复现**：油猴已启本脚本 → 在 BC 页面点书签 → 控制台 `[QiAct] 已加载，跳过`
 - **影响**：良性（油猴版继续运行，功能正常）；用户可能误以为「书签覆盖了油猴」
 - **建议**：README 已警告；可加更醒目提示
 

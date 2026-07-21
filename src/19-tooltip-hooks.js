@@ -7,8 +7,8 @@
     );
 
     function initTooltip() {
-        if (window.__xsactTooltipReady) return;
-        window.__xsactTooltipReady = true;
+        if (window.__qiactTooltipReady) return;
+        window.__qiactTooltipReady = true;
 
         var tip = document.createElement('div');
         tip.className = 'xsact-tooltip';
@@ -125,7 +125,7 @@
                 });
             });
         } catch (e) {
-            console.warn('[XSAct-QA] ActivityAllowedForGroup hook 失败:', e.message);
+            console.warn('[QiAct] ActivityAllowedForGroup hook 失败:', e.message);
         }
 
         // ── Hook: AssetAllActivities —— 枚举期兜底过滤 echo 端已导入的同名原始动作 ──
@@ -142,7 +142,7 @@
                 } catch (e) { return result; }
             });
         } catch (e) {
-            console.warn('[XSAct-QA] AssetAllActivities hook 失败:', e.message);
+            console.warn('[QiAct] AssetAllActivities hook 失败:', e.message);
         }
 
         // DrawCharacter(Character, X, Y, Zoom, ...) 的 X/Y/Zoom 是角色最终画上去的位置，
@@ -161,7 +161,7 @@
                 return r;
             });
         } catch (e) {
-            console.warn('[XSAct-QA] DrawCharacter 锚点 hook 失败:', e.message);
+            console.warn('[QiAct] DrawCharacter 锚点 hook 失败:', e.message);
         }
 
         // Hook: DrawProcess — 每帧在主聊天界面确保切换按钮常驻
@@ -207,7 +207,7 @@
                     };
                     saveStorage(S_LAST, state.lastAction);
                 }
-            } catch (e) { console.warn('[XSAct-QA] ActivityRun hook 记录失败:', e.message); }
+            } catch (e) { console.warn('[QiAct] ActivityRun hook 记录失败:', e.message); }
             next(args);
         });
 
@@ -272,7 +272,7 @@
                         if (_ca) {
                             var _acted = args[1];
                             try { args[4] = false; next(args); }
-                            catch (e) { console.warn('[XSAct-QA] 原生点击本地副作用失败:', e.message); }
+                            catch (e) { console.warn('[QiAct] 原生点击本地副作用失败:', e.message); }
                             var _packet = makeActivityPacket(_acted, _ca.group, _name, _item.Item || null);
                             if (_packet) {
                                 var _prev = _acted ? _acted.FocusGroup : undefined;
@@ -286,11 +286,11 @@
                             return; // 已自行发包，阻断 BC 默认 Activity 包
                         }
                     }
-                } catch (e) { console.warn('[XSAct-QA] 原生点击拦截异常，回退 BC 默认:', e.message); }
+                } catch (e) { console.warn('[QiAct] 原生点击拦截异常，回退 BC 默认:', e.message); }
                 return next(args);
             });
         } catch (e) {
-            console.warn('[XSAct-QA] ActivityRun 原生点击拦截 hook 失败:', e.message);
+            console.warn('[QiAct] ActivityRun 原生点击拦截 hook 失败:', e.message);
         }
 
         // ── Hook: ElementButton.CreateForActivity —— 为自定义动作按钮注入图标 ──
@@ -309,7 +309,7 @@
                 return next(args);
             });
         } catch (e) {
-            console.warn('[XSAct-QA] ElementButton 图标 hook 失败:', e.message);
+            console.warn('[QiAct] ElementButton 图标 hook 失败:', e.message);
         }
 
         // 将定时器控制绑定到 enter/exit
@@ -344,7 +344,7 @@
     function registerSettings() {
         if (typeof PreferenceRegisterExtensionSetting === 'undefined') return;
         PreferenceRegisterExtensionSetting({
-            Identifier: 'XSAct_QA',
+            Identifier: 'QiAct',
             ButtonText: '快速动作',
             Image: 'Icons/End.png',
             load: function() {},
@@ -362,7 +362,7 @@
                     // 返回按钮：回调 = PreferenceExit（由 BC 在真正点击时触发，不再依赖每帧 MouseIn 探测）
                     DrawButton(1815, 230, 90, 90, '', '#White', 'Icons/Exit.png', (typeof T !== 'undefined' && T.Back) ? T.Back : '返回', PreferenceExit);
                 } catch (e) {
-                    console.error('[XSAct-QA] 扩展设置子页绘制异常（已隔离，不影响游戏）:', e && e.message);
+                    console.error('[QiAct] 扩展设置子页绘制异常（已隔离，不影响游戏）:', e && e.message);
                 }
             },
             click: function() {},

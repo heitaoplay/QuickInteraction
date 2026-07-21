@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         快捷互动 (QuickInteraction)
+// @name         快捷互动 (QiAct)
 // @name:zh      快捷互动
 // @namespace    https://github.com/heitaoplay/QuickInteraction
-// @version      1.1.5
+// @version      1.1.6
 // @description  Bondage Club - 统一动作操作台。一键进入动作模式，在聊天室场景内直接点人物部位选动作，绕过原生5步嵌套菜单。
 // @author       Tao MUSE
 // @homepageURL  https://github.com/heitaoplay/QuickInteraction
@@ -26,11 +26,11 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
     // ════════════════════════════════════════════════════════════════════════
     // 防重复加载
     // ════════════════════════════════════════════════════════════════════════
-    if (window.__XSActQA_Loaded__) {
-        console.warn('[XSAct-QA] 已加载，跳过');
+    if (window.__QiAct_Loaded__) {
+        console.warn('[QiAct] 已加载，跳过');
         return;
     }
-    window.__XSActQA_Loaded__ = true;
+    window.__QiAct_Loaded__ = true;
 
     // ════════════════════════════════════════════════════════════════════════
     // 调试开关与日志封装
@@ -41,7 +41,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
     const DEBUG = false;
     function logD() {
         if (!DEBUG) return;
-        var args = ['[XSAct-QA]'];
+        var args = ['[QiAct]'];
         for (var i = 0; i < arguments.length; i++) args.push(arguments[i]);
         console.log.apply(console, args);
     }
@@ -52,16 +52,16 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
     function reportHookError(name, e) {
         if (_hookErrSeen[name] >= 3) return;
         _hookErrSeen[name] = (_hookErrSeen[name] || 0) + 1;
-        console.warn('[XSAct-QA] hook『' + name + '』异常（已忽略，最多报 3 次）:', e && e.message);
+        console.warn('[QiAct] hook『' + name + '』异常（已忽略，最多报 3 次）:', e && e.message);
     }
     // 服务器设置同步失败：必须可见 + 至少一次 toast（数据静默丢失红线）
     let _serverSyncWarned = false;
     function warnServerSync(e) {
-        console.warn('[XSAct-QA] 服务器设置同步失败，已回退本地存储:', e);
+        console.warn('[QiAct] 服务器设置同步失败，已回退本地存储:', e);
         if (!_serverSyncWarned) { _serverSyncWarned = true; toast('设置同步到服务器失败，已保留在本地', '#FF5C5C'); }
     }
 
-    const VERSION = '1.1.5';
+    const VERSION = '1.1.6';
 
     // ── 存储键 ──
     const S_ENABLED = 'xsact_qa_enabled';
@@ -97,7 +97,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         selfModeActive: false,        // 自己模式开关
         combos: [],                   // 自定义组合
         editingComboId: null,         // 正在编辑的组合 id
-        customActions: [],            // 自定义动作（XSAct 自包含版，替代 echo/回声）
+        customActions: [],            // 自定义动作（QiAct 自包含版，替代 echo/回声）
         echoSuppressed: new Set(),    // 已导入的 echo 原始动作名（屏蔽用）
         echoPrefixes: new Set(),     // 已导入 echo 动作的中文显示前缀（安全前缀兜底，仅匹配 echo 命名空间，不误伤 BC 原生动作）
         editingCustomId: null,        // 正在编辑的自定义动作 id
@@ -230,7 +230,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
     /* ===== 3. 存储层（localStorage + 服务器 OnlineSettings） ===== */
     function loadStorage(key, fallback) {
         try { var v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; }
-        catch (e) { console.error('[XSAct-QA] 读取存储失败 ' + key + ':', e); return fallback; }
+        catch (e) { console.error('[QiAct] 读取存储失败 ' + key + ':', e); return fallback; }
     }
     // 安全序列化：遇到循环引用时跳過（用 [Circular] 占位），避免保存直接抛错丢数据。
     // 同时尽力在二次报错里打印出循环路径，方便定位真实根因（正常扁平数据不受影响）。
@@ -247,21 +247,21 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
     function saveStorage(key, val) {
         try { localStorage.setItem(key, JSON.stringify(val)); }
         catch (e) {
-            console.error('[XSAct-QA] 写入存储失败 ' + key + ':', e);
+            console.error('[QiAct] 写入存储失败 ' + key + ':', e);
             try {
                 if (typeof val === 'object' && val) {
                     console.error('  keys=', Object.keys(val).join(','), 'types=', Object.keys(val).map(function(k){ return typeof val[k]; }).join(','));
                 }
-            } catch (_) { console.warn('[XSAct-QA] 诊断存储值结构失败（已忽略）:', _ && _.message); }
+            } catch (_) { console.warn('[QiAct] 诊断存储值结构失败（已忽略）:', _ && _.message); }
             // 二次兜底：跳过循环引用，保证数据尽量落盘，绝不让存储写入中断业务流程
-            try { localStorage.setItem(key, safeStringify(val)); console.warn('[XSAct-QA] 已用安全序列化兜底写入 ' + key + '（跳过循环引用）'); }
-            catch (e2) { console.error('[XSAct-QA] 安全兜底仍失败 ' + key + ':', e2); }
+            try { localStorage.setItem(key, safeStringify(val)); console.warn('[QiAct] 已用安全序列化兜底写入 ' + key + '（跳过循环引用）'); }
+            catch (e2) { console.error('[QiAct] 安全兜底仍失败 ' + key + ':', e2); }
         }
     }
 
     // ── 主题 / 设置键 ──
     const S_THEME = 'xsact_qa_theme';
-    const MOD_NS  = 'XSAct_QA';
+    const MOD_NS  = 'QiAct';
 
     // 主题定义：仅保留深色 / 浅色两套，强调色固定玫红
     const THEMES = [
@@ -311,7 +311,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             if (s !== undefined) return s;
             return loadStorage(key, fallback);
         } catch (e) {
-            console.error('[XSAct-QA] 读取设置失败 ' + key + ':', e);
+            console.error('[QiAct] 读取设置失败 ' + key + ':', e);
             return fallback;
         }
     }
@@ -389,7 +389,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                     }).filter(function(a) { return a && a.Name; });
                 }
             } catch (e) {
-                console.warn('[XSAct-QA] ActivityAllowedForGroup 失败，改用全量列表:', e.message);
+                console.warn('[QiAct] ActivityAllowedForGroup 失败，改用全量列表:', e.message);
             }
         }
 
@@ -500,11 +500,11 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                 return r;
             });
             window.__XSACT_ADT_PATCHED = true;
-            logD('[XSAct-QA] 已打 ActivityDictionaryText SDK hook 兜底');
+            logD('[QiAct] 已打 ActivityDictionaryText SDK hook 兜底');
             return;
         }
         // 降级：SDK 不可用时直接覆盖（仅在热注入/异常降级场景触发，可能触发 BCX 警告）
-        console.warn('[XSAct-QA] ModSDK hook 不可用，降级为 ActivityDictionaryText 直接覆盖；建议检查是否重复注入');
+        console.warn('[QiAct] ModSDK hook 不可用，降级为 ActivityDictionaryText 直接覆盖；建议检查是否重复注入');
         var _orig = window.ActivityDictionaryText;
         window.ActivityDictionaryText = function(key) {
             var r = _orig.apply(this, arguments);
@@ -521,7 +521,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             return r;
         };
         window.__XSACT_ADT_PATCHED = true;
-        logD('[XSAct-QA] 已打 ActivityDictionaryText 直接兜底补丁（SDK 不可用）');
+        logD('[QiAct] 已打 ActivityDictionaryText 直接兜底补丁（SDK 不可用）');
     }
 
     function getActivityLabelFallback(name, targetGroup) {
@@ -743,11 +743,11 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                     .replace(/SourceCharacter/g, caSrc)
                     .replace(/TargetCharacter/g, caTgt);
                 return {
-                    Content: 'XSAct_ChatFallback',
+                    Content: 'QiAct_ChatFallback',
                     Type: 'Action',
                     Dictionary: [
                         charTagForAction(Player),
-                        { Tag: 'MISSING TEXT IN "Interface.csv": XSAct_ChatFallback', Text: caDialog }
+                        { Tag: 'MISSING TEXT IN "Interface.csv": QiAct_ChatFallback', Text: caDialog }
                     ]
                 };
             }
@@ -810,7 +810,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                     sentence = '对' + (targetChar && (targetChar.Nickname || targetChar.Name || targetChar.AccountName) || '某人') + '做了「' + displayName + '」';
                 }
             }
-            var fbKey = 'XSAct_ChatFallback';
+            var fbKey = 'QiAct_ChatFallback';
             return {
                 Content: fbKey,
                 Type: 'Action',
@@ -934,7 +934,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                         ActivityRun(Player, charObj, targetGroupObj, { Activity: activityObj, Item: activityItem }, false);
                     }
                 } catch (runErr) {
-                    console.warn('[XSAct-QA] ActivityRun 本地副作用执行失败:', runErr.message);
+                    console.warn('[QiAct] ActivityRun 本地副作用执行失败:', runErr.message);
                 }
             }
 
@@ -952,12 +952,12 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                 if (typeof ServerSend === 'function') {
                     ServerSend('ChatRoomChat', packet);
                 } else {
-                    console.warn('[XSAct-QA] ServerSend 暂不可用，动作未实际发送');
+                    console.warn('[QiAct] ServerSend 暂不可用，动作未实际发送');
                 }
                 recordLastAction(name, charObj.MemberNumber, group, packet.Dictionary);
                 return true;
             } catch (sendErr) {
-                console.warn('[XSAct-QA] ServerSend 失败:', sendErr.message);
+                console.warn('[QiAct] ServerSend 失败:', sendErr.message);
             } finally {
                 charObj.FocusGroup = prevFocus;
             }
@@ -966,7 +966,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             toast('该动作暂不可用', '#FF5C5C');
             return false;
         } catch (e) {
-            console.error('[XSAct-QA] 执行动作异常:', e);
+            console.error('[QiAct] 执行动作异常:', e);
             toast('执行失败: ' + e.message, '#FF5C5C');
             return false;
         }
@@ -1096,7 +1096,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
     }
 
     /* ══════════════════════════════════════════════════════════════
-       自定义动作（XSAct 自包含版，替代 echo/回声 echo-activity-ext）
+       自定义动作（QiAct 自包含版，替代 echo/回声 echo-activity-ext）
        —— 参考 echo 注册内核，但完全重做 UI；直接用 BC 原生 ActivityAdd，
           不引入 sugarch 依赖。跨客户端可见性靠 makeActivityPacket 的
           Action 兜底分支（名字含下划线 → 走彩色小字动作，文本用本地字典）。
@@ -1199,7 +1199,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                 caSetDict('Label-ChatSelf-' + g + '-' + nm, label);
                 caSetDict('ChatSelf-' + g + '-' + nm, dialogSelf);
             });
-        } catch (e) { console.warn('[XSAct-QA] 注册自定义动作字典失败:', e.message); }
+        } catch (e) { console.warn('[QiAct] 注册自定义动作字典失败:', e.message); }
     }
     function caUnregisterDictionary(act, nm) {
         try {
@@ -1238,7 +1238,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                 ActivityFemale3DCGOrdering.push(actName);
             }
             return true;
-        } catch (e) { console.warn('[XSAct-QA] 注册自定义动作失败:', act.name, e.message); return false; }
+        } catch (e) { console.warn('[QiAct] 注册自定义动作失败:', act.name, e.message); return false; }
     }
     function caUnregister(act) {
         try {
@@ -1256,7 +1256,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                     if (ActivityFemale3DCGOrdering[j] === nm) ActivityFemale3DCGOrdering.splice(j, 1);
                 }
             }
-        } catch (_) { console.warn('[XSAct-QA] 反注册活动排序项失败（已忽略）:', _ && _.message); }
+        } catch (_) { console.warn('[QiAct] 反注册活动排序项失败（已忽略）:', _ && _.message); }
     }
     /** 按活动名反查自定义动作对象（用于发包时取对话文本） */
     function caFindByActivityName(name) {
@@ -1295,7 +1295,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             var echoKey = ext && Object.keys(ext).find(function(k) { return k.indexOf('ECHO') === 0; });
             var echoData = echoKey && ext[echoKey] && ext[echoKey]['动作数据'];
             if (echoData) Object.values(echoData).forEach(function(item) { if (item && item.Name) echoNames.add(item.Name); });
-        } catch (e) { console.warn('[XSAct-QA] 读取 echo 动作数据失败（已忽略）:', e && e.message); }
+        } catch (e) { console.warn('[QiAct] 读取 echo 动作数据失败（已忽略）:', e && e.message); }
         state.customActions.forEach(function(a) {
             if (typeof a.visible !== 'boolean') a.visible = true;
             if (!a.source) a.source = echoNames.has(a.name) ? 'echo' : 'native';
@@ -1359,7 +1359,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         }
     }
     function saveEchoSuppressed() {
-        try { persist(S_ECHO_SUPPRESS, Array.from(state.echoSuppressed)); } catch (e) { console.warn('[XSAct-QA] 持久化 echo 屏蔽集合失败（已忽略）:', e && e.message); }
+        try { persist(S_ECHO_SUPPRESS, Array.from(state.echoSuppressed)); } catch (e) { console.warn('[QiAct] 持久化 echo 屏蔽集合失败（已忽略）:', e && e.message); }
     }
     function rebuildEchoSuppressed() {
         // 以持久化的屏蔽集合为基础，同步当前所有 source==='echo' 的自定义动作名，
@@ -1522,7 +1522,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                     names.add(a.Name);
                 });
             });
-        } catch (e) { console.warn('[XSAct-QA] 扫描 echo 原始动作名失败:', e.message); }
+        } catch (e) { console.warn('[QiAct] 扫描 echo 原始动作名失败:', e.message); }
         return names;
     }
     /** 读取 BC 原生活动数组（绕过本插件对 AssetAllActivities 的 hook，拿到未过滤的原始数组）。
@@ -1558,7 +1558,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                     if (caIsEchoSuppressed(ActivityFemale3DCGOrdering[j])) ActivityFemale3DCGOrdering.splice(j, 1);
                 }
             }
-        } catch (e) { console.warn('[XSAct-QA] 物理移除 echo 原始动作失败（已忽略）:', e.message); }
+        } catch (e) { console.warn('[QiAct] 物理移除 echo 原始动作失败（已忽略）:', e.message); }
     }
     /** 迁移完成后清理原 echo/回声 中的「动作数据」。
      *  仅清空其 ExtensionSettings[ECHO]['动作数据']（不动 echo 其他配置），
@@ -1622,14 +1622,14 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                     ServerAccountUpdate.QueueData('ExtensionSettings', Player.ExtensionSettings);
                     ServerAccountUpdate.SyncToServer();
                 }
-            } catch (e) { console.warn('[XSAct-QA] 持久化 echo 设置失败（已忽略）:', e && e.message); }
+            } catch (e) { console.warn('[QiAct] 持久化 echo 设置失败（已忽略）:', e && e.message); }
 
             // 清空 echoData 后再次重建屏蔽集合并移除残留；延迟再扫一次防止 echo 异步回写
             rebuildEchoSuppressed();
             caRemoveSuppressedEchoActivities();
             setTimeout(function() {
                 try { rebuildEchoSuppressed(); caRemoveSuppressedEchoActivities(); }
-                catch (e) { console.warn('[XSAct-QA] 延迟清理 echo 残留失败（已忽略）:', e && e.message); }
+                catch (e) { console.warn('[QiAct] 延迟清理 echo 残留失败（已忽略）:', e && e.message); }
             }, 1200);
 
             toast('已清理原 echo 数据（' + before + ' 项）', '#46E0A0');
@@ -1717,7 +1717,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                 var scopeBadge = a.scope === 'self' ? '<span class="xsact-ca-badge self">仅自己</span>'
                     : a.scope === 'other' ? '<span class="xsact-ca-badge other">仅他人</span>'
                     : '<span class="xsact-ca-badge any">皆可</span>';
-                var sourceBadge = a.source === 'echo' ? '<span class="xsact-ca-src echo" title="来自 echo/回声 导入">echo</span>' : '<span class="xsact-ca-src native" title="本插件创建">XSAct</span>';
+                var sourceBadge = a.source === 'echo' ? '<span class="xsact-ca-src echo" title="来自 echo/回声 导入">echo</span>' : '<span class="xsact-ca-src native" title="本插件创建">QiAct</span>';
                 var partLbl = (BODY_PARTS.find(function(p) { return p.group === a.group; }) || {}).label || a.group;
                 var isVisible = a.visible !== false;
                 var isSel = !!selSet[a.id];
@@ -1929,7 +1929,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                     dragEl = card;
                     state.caDragId = card.dataset.id;
                     e.dataTransfer.effectAllowed = 'move';
-                    try { e.dataTransfer.setData('text/plain', card.dataset.id); } catch (err) { console.warn('[XSAct-QA] 拖拽 setData 失败（已忽略）:', err && err.message); }
+                    try { e.dataTransfer.setData('text/plain', card.dataset.id); } catch (err) { console.warn('[QiAct] 拖拽 setData 失败（已忽略）:', err && err.message); }
                     setTimeout(function(){ if (dragEl) dragEl.classList.add('dragging'); }, 0);
                 });
                 dragList.addEventListener('dragover', function(e) {
@@ -2355,7 +2355,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             updateCustomActionPanel(state.selectedTarget);
             toast('已从 echo/回声 导入 ' + imported + ' 个动作', '#46E0A0');
         } catch (e) {
-            console.warn('[XSAct-QA] 导入 echo/回声 动作失败:', e.message);
+            console.warn('[QiAct] 导入 echo/回声 动作失败:', e.message);
             toast('导入失败：' + e.message, '#FF5C5C');
         }
     }
@@ -2373,7 +2373,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             URL.revokeObjectURL(url);
             toast('已导出 ' + state.customActions.length + ' 个动作', '#46E0A0');
         } catch (e) {
-            console.warn('[XSAct-QA] 导出自定义动作失败:', e.message);
+            console.warn('[QiAct] 导出自定义动作失败:', e.message);
             toast('导出失败：' + e.message, '#FF5C5C');
         }
     }
@@ -2429,14 +2429,14 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                     updateCustomActionPanel(state.selectedTarget);
                     toast('导入完成：新增 ' + imported + ' 个，更新 ' + updated + ' 个', '#46E0A0');
                 } catch (inner) {
-                    console.warn('[XSAct-QA] 解析 JSON 失败:', inner.message);
+                    console.warn('[QiAct] 解析 JSON 失败:', inner.message);
                     toast('JSON 解析失败：' + inner.message, '#FF5C5C');
                 }
             };
             reader.onerror = function() { toast('读取文件失败', '#FF5C5C'); };
             reader.readAsText(file);
         } catch (e) {
-            console.warn('[XSAct-QA] 导入本地文件失败:', e.message);
+            console.warn('[QiAct] 导入本地文件失败:', e.message);
             toast('导入失败：' + e.message, '#FF5C5C');
         }
     }
@@ -2473,7 +2473,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                     }
                 }
             }
-        } catch (e) { console.warn('[XSAct-QA] 清理自定义动作残留失败:', e.message); }
+        } catch (e) { console.warn('[QiAct] 清理自定义动作残留失败:', e.message); }
         state.customActions.forEach(function(act) { caRegister(act); });
     }
 
@@ -2733,8 +2733,8 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         }
     }
     function startVisibilityGuard() {
-        if (window.__XSActQA_VisGuard) { try { clearInterval(window.__XSActQA_VisGuard); } catch (_) { /* 忽略：清理旧定时器失败无影响 */ } }
-        window.__XSActQA_VisGuard = setInterval(guardToggleVisibility, 500);
+        if (window.__QiAct_VisGuard) { try { clearInterval(window.__QiAct_VisGuard); } catch (_) { /* 忽略：清理旧定时器失败无影响 */ } }
+        window.__QiAct_VisGuard = setInterval(guardToggleVisibility, 500);
     }
 
     // ════════════════════════════════════════════════════════════════════════
@@ -2790,7 +2790,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         applyPanelPosition();
         renderPanel();
         renderPendingBanner();
-        checkUpdate().catch(function(e) { console.warn('[XSAct-QA] 更新检查失败（已忽略）:', e && e.message); });
+        checkUpdate().catch(function(e) { console.warn('[QiAct] 更新检查失败（已忽略）:', e && e.message); });
 
         // 恢复自己模式开关状态
         state.selfModeActive = loadSetting(S_SELF, false);
@@ -2934,7 +2934,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                 layout.push({ char: c, x: useX.x, y: useY.y, zoom: (loop ? loop.zoom : (anchor ? anchor.zoom : 1)), src: loop ? 'loop' : 'anchor' });
             });
         } catch (e) {
-            console.warn('[XSAct-QA] getCharLayout 失败:', e);
+            console.warn('[QiAct] getCharLayout 失败:', e);
         }
         return layout;
     }
@@ -3732,7 +3732,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                         // 来源为 LSCG / Liko 的动作会改变可用状态/进度（如进食进度、道具附加），
                         // 执行后立即静默刷新当前部位动作列表以反映最新状态，且不弹任何提示。
                         if (srcKey === 'LSCG' || srcKey === 'LIKO') {
-                            setTimeout(function() { try { updateActionPanel(charObj, partGroup); } catch (_) { console.warn('[XSAct-QA] 延迟刷新动作面板失败（已忽略）:', _ && _.message); } }, 50);
+                            setTimeout(function() { try { updateActionPanel(charObj, partGroup); } catch (_) { console.warn('[QiAct] 延迟刷新动作面板失败（已忽略）:', _ && _.message); } }, 50);
                         } else if (execOk !== false) {
                             toast('已执行：' + getActivityLabel(actName, partGroup), '#46E0A0');
                         }
@@ -3754,7 +3754,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                 });
             }
         } catch (panelErr) {
-            console.error('[XSAct-QA] updateActionPanel 渲染失败:', panelErr);
+            console.error('[QiAct] updateActionPanel 渲染失败:', panelErr);
             if (state.actionPanelEl) {
                 var listEl = state.actionPanelEl.querySelector('#xsact-action-list');
                 if (listEl) listEl.innerHTML = '<div class="xsact-qa-empty" style="color:#FF8FA6">动作列表加载出错，请刷新或反馈。<br><small>' + escapeHtml(panelErr.message) + '</small></div>';
@@ -4868,8 +4868,8 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
     );
 
     function initTooltip() {
-        if (window.__xsactTooltipReady) return;
-        window.__xsactTooltipReady = true;
+        if (window.__qiactTooltipReady) return;
+        window.__qiactTooltipReady = true;
 
         var tip = document.createElement('div');
         tip.className = 'xsact-tooltip';
@@ -4986,7 +4986,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                 });
             });
         } catch (e) {
-            console.warn('[XSAct-QA] ActivityAllowedForGroup hook 失败:', e.message);
+            console.warn('[QiAct] ActivityAllowedForGroup hook 失败:', e.message);
         }
 
         // ── Hook: AssetAllActivities —— 枚举期兜底过滤 echo 端已导入的同名原始动作 ──
@@ -5003,7 +5003,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                 } catch (e) { return result; }
             });
         } catch (e) {
-            console.warn('[XSAct-QA] AssetAllActivities hook 失败:', e.message);
+            console.warn('[QiAct] AssetAllActivities hook 失败:', e.message);
         }
 
         // DrawCharacter(Character, X, Y, Zoom, ...) 的 X/Y/Zoom 是角色最终画上去的位置，
@@ -5022,7 +5022,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                 return r;
             });
         } catch (e) {
-            console.warn('[XSAct-QA] DrawCharacter 锚点 hook 失败:', e.message);
+            console.warn('[QiAct] DrawCharacter 锚点 hook 失败:', e.message);
         }
 
         // Hook: DrawProcess — 每帧在主聊天界面确保切换按钮常驻
@@ -5068,7 +5068,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                     };
                     saveStorage(S_LAST, state.lastAction);
                 }
-            } catch (e) { console.warn('[XSAct-QA] ActivityRun hook 记录失败:', e.message); }
+            } catch (e) { console.warn('[QiAct] ActivityRun hook 记录失败:', e.message); }
             next(args);
         });
 
@@ -5133,7 +5133,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                         if (_ca) {
                             var _acted = args[1];
                             try { args[4] = false; next(args); }
-                            catch (e) { console.warn('[XSAct-QA] 原生点击本地副作用失败:', e.message); }
+                            catch (e) { console.warn('[QiAct] 原生点击本地副作用失败:', e.message); }
                             var _packet = makeActivityPacket(_acted, _ca.group, _name, _item.Item || null);
                             if (_packet) {
                                 var _prev = _acted ? _acted.FocusGroup : undefined;
@@ -5147,11 +5147,11 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                             return; // 已自行发包，阻断 BC 默认 Activity 包
                         }
                     }
-                } catch (e) { console.warn('[XSAct-QA] 原生点击拦截异常，回退 BC 默认:', e.message); }
+                } catch (e) { console.warn('[QiAct] 原生点击拦截异常，回退 BC 默认:', e.message); }
                 return next(args);
             });
         } catch (e) {
-            console.warn('[XSAct-QA] ActivityRun 原生点击拦截 hook 失败:', e.message);
+            console.warn('[QiAct] ActivityRun 原生点击拦截 hook 失败:', e.message);
         }
 
         // ── Hook: ElementButton.CreateForActivity —— 为自定义动作按钮注入图标 ──
@@ -5170,7 +5170,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                 return next(args);
             });
         } catch (e) {
-            console.warn('[XSAct-QA] ElementButton 图标 hook 失败:', e.message);
+            console.warn('[QiAct] ElementButton 图标 hook 失败:', e.message);
         }
 
         // 将定时器控制绑定到 enter/exit
@@ -5205,7 +5205,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
     function registerSettings() {
         if (typeof PreferenceRegisterExtensionSetting === 'undefined') return;
         PreferenceRegisterExtensionSetting({
-            Identifier: 'XSAct_QA',
+            Identifier: 'QiAct',
             ButtonText: '快速动作',
             Image: 'Icons/End.png',
             load: function() {},
@@ -5223,7 +5223,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                     // 返回按钮：回调 = PreferenceExit（由 BC 在真正点击时触发，不再依赖每帧 MouseIn 探测）
                     DrawButton(1815, 230, 90, 90, '', '#White', 'Icons/Exit.png', (typeof T !== 'undefined' && T.Back) ? T.Back : '返回', PreferenceExit);
                 } catch (e) {
-                    console.error('[XSAct-QA] 扩展设置子页绘制异常（已隔离，不影响游戏）:', e && e.message);
+                    console.error('[QiAct] 扩展设置子页绘制异常（已隔离，不影响游戏）:', e && e.message);
                 }
             },
             click: function() {},
@@ -5344,15 +5344,15 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             }
         } catch (e) {
             // 区分真实网络错误与脚本内部错误：脚本 bug（如未定义常量）不应伪装成「网络失败」误导排查
-            console.warn('[XSAct-QA] 更新检查未成功（跳过本次轮询，不影响游戏）:', e && e.message);
+            console.warn('[QiAct] 更新检查未成功（跳过本次轮询，不影响游戏）:', e && e.message);
         }
     }
 
     function startUpdateChecker() {
         if (state.updateTimer) return;
         // 加载后 30 秒先查一次，之后每 5 分钟轮询
-        setTimeout(function() { checkUpdate().catch(function(e) { console.warn('[XSAct-QA] 更新检查失败（已忽略）:', e && e.message); }); }, 30000);
-        state.updateTimer = setInterval(function() { checkUpdate().catch(function(e) { console.warn('[XSAct-QA] 更新检查失败（已忽略）:', e && e.message); }); }, 5 * 60 * 1000);
+        setTimeout(function() { checkUpdate().catch(function(e) { console.warn('[QiAct] 更新检查失败（已忽略）:', e && e.message); }); }, 30000);
+        state.updateTimer = setInterval(function() { checkUpdate().catch(function(e) { console.warn('[QiAct] 更新检查失败（已忽略）:', e && e.message); }); }, 5 * 60 * 1000);
     }
 
     // ════════════════════════════════════════════════════════════════════════
@@ -5365,13 +5365,13 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
     async function main() {
         logD('v' + VERSION + ' 初始化...');
 
-        // 热重注入（CDP 反复注入测试）场景：若上一轮实例仍挂在 window.__XSActQA，
+        // 热重注入（CDP 反复注入测试）场景：若上一轮实例仍挂在 window.__QiAct，
         // 先卸载其 bcModSdk 注册，避免 "it is already loaded" 导致本次 registerMod 失败、
         // 进而 setupHooks 拿不到 modApi（降级成空对象）→ 面板/动作列表无法渲染。
         try {
-            if (window.__XSActQA && window.__XSActQA.state && window.__XSActQA.state.modApi &&
-                typeof window.__XSActQA.state.modApi.unload === 'function') {
-                window.__XSActQA.state.modApi.unload();
+            if (window.__QiAct && window.__QiAct.state && window.__QiAct.state.modApi &&
+                typeof window.__QiAct.state.modApi.unload === 'function') {
+                window.__QiAct.state.modApi.unload();
             }
         } catch (_) { /* 卸载旧实例失败不阻塞本次启动 */ }
 
@@ -5389,7 +5389,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             logD('state.modApi 注册完成');
         } catch (regErr) {
             // 已注册过（热重注入场景）：尝试从已有 mods 中取回
-            console.warn('[XSAct-QA] registerMod 异常（可能已注册）:', regErr.message);
+            console.warn('[QiAct] registerMod 异常（可能已注册）:', regErr.message);
             try {
                 var mods = bcModSdk.getModsInfo ? bcModSdk.getModsInfo() : [];
                 for (var mi = 0; mi < mods.length; mi++) {
@@ -5407,7 +5407,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         logD('玩家已登入:', Player.AccountName || Player.Name);
 
         // 修补 ActivityDictionaryText（LSCG 等 mod 文本解析兜底，详见 patchActivityDictionaryText 注释）
-        try { patchActivityDictionaryText(); } catch (e) { console.warn('[XSAct-QA] patchActivityDictionaryText 失败:', e); }
+        try { patchActivityDictionaryText(); } catch (e) { console.warn('[QiAct] patchActivityDictionaryText 失败:', e); }
 
         // 加载存储
         state.isActive = loadSetting(S_ENABLED, false);
@@ -5425,32 +5425,32 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         applyTheme(state.theme);
 
         // 注入样式
-        try { injectStyles(); } catch (e) { console.warn('[XSAct-QA] injectStyles 失败:', e); }
+        try { injectStyles(); } catch (e) { console.warn('[QiAct] injectStyles 失败:', e); }
 
         // 自定义 tooltip（替换原生 title，仅作用于本插件 UI）
-        try { initTooltip(); } catch (e) { console.warn('[XSAct-QA] initTooltip 失败:', e); }
+        try { initTooltip(); } catch (e) { console.warn('[QiAct] initTooltip 失败:', e); }
 
         // 注册设置
-        try { registerSettings(); } catch (e) { console.warn('[XSAct-QA] registerSettings 失败:', e); }
+        try { registerSettings(); } catch (e) { console.warn('[QiAct] registerSettings 失败:', e); }
 
         // 安装 hooks
-        try { setupHooks(); } catch (e) { console.error('[XSAct-QA] setupHooks 失败:', e); }
+        try { setupHooks(); } catch (e) { console.error('[QiAct] setupHooks 失败:', e); }
 
         // 若设置默认开启，且当前在聊天室，自动进入动作模式
         if (state.isActive && typeof CurrentScreen !== 'undefined' && CurrentScreen === 'ChatRoom') {
-            try { enterActionMode(); } catch (e) { console.warn('[XSAct-QA] 自动进入动作模式失败:', e); }
+            try { enterActionMode(); } catch (e) { console.warn('[QiAct] 自动进入动作模式失败:', e); }
         }
 
         // 聊天室内确保浮动开关（闪电图标）常驻可见；用轮询守卫，离开/回到聊天室都能正确恢复
         if (typeof CurrentScreen !== 'undefined') {
-            try { startVisibilityGuard(); guardToggleVisibility(); } catch (e) { console.warn('[XSAct-QA] 启动浮动开关守卫失败:', e); }
+            try { startVisibilityGuard(); guardToggleVisibility(); } catch (e) { console.warn('[QiAct] 启动浮动开关守卫失败:', e); }
         }
 
         // 启动更新/公告检测（脚本内 5 分钟轮询，玩家端收到，无需刷新页面）
-        try { startUpdateChecker(); } catch (e) { console.warn('[XSAct-QA] 启动更新检测失败:', e); }
+        try { startUpdateChecker(); } catch (e) { console.warn('[QiAct] 启动更新检测失败:', e); }
 
         // 暴露调试/控制接口（无论前面是否出错，必须暴露）
-        window.__XSActQA = {
+        window.__QiAct = {
             toggle: toggleActionMode,
             enter: enterActionMode,
             exit: exitActionMode,
@@ -5519,7 +5519,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
 
     // 启动
     main().catch(function(err) {
-        console.error('[XSAct-QA] 初始化失败:', err);
+        console.error('[QiAct] 初始化失败:', err);
     });
 
 })();

@@ -93,7 +93,7 @@
                 caSetDict('Label-ChatSelf-' + g + '-' + nm, label);
                 caSetDict('ChatSelf-' + g + '-' + nm, dialogSelf);
             });
-        } catch (e) { console.warn('[XSAct-QA] 注册自定义动作字典失败:', e.message); }
+        } catch (e) { console.warn('[QiAct] 注册自定义动作字典失败:', e.message); }
     }
     function caUnregisterDictionary(act, nm) {
         try {
@@ -132,7 +132,7 @@
                 ActivityFemale3DCGOrdering.push(actName);
             }
             return true;
-        } catch (e) { console.warn('[XSAct-QA] 注册自定义动作失败:', act.name, e.message); return false; }
+        } catch (e) { console.warn('[QiAct] 注册自定义动作失败:', act.name, e.message); return false; }
     }
     function caUnregister(act) {
         try {
@@ -150,7 +150,7 @@
                     if (ActivityFemale3DCGOrdering[j] === nm) ActivityFemale3DCGOrdering.splice(j, 1);
                 }
             }
-        } catch (_) { console.warn('[XSAct-QA] 反注册活动排序项失败（已忽略）:', _ && _.message); }
+        } catch (_) { console.warn('[QiAct] 反注册活动排序项失败（已忽略）:', _ && _.message); }
     }
     /** 按活动名反查自定义动作对象（用于发包时取对话文本） */
     function caFindByActivityName(name) {
@@ -189,7 +189,7 @@
             var echoKey = ext && Object.keys(ext).find(function(k) { return k.indexOf('ECHO') === 0; });
             var echoData = echoKey && ext[echoKey] && ext[echoKey]['动作数据'];
             if (echoData) Object.values(echoData).forEach(function(item) { if (item && item.Name) echoNames.add(item.Name); });
-        } catch (e) { console.warn('[XSAct-QA] 读取 echo 动作数据失败（已忽略）:', e && e.message); }
+        } catch (e) { console.warn('[QiAct] 读取 echo 动作数据失败（已忽略）:', e && e.message); }
         state.customActions.forEach(function(a) {
             if (typeof a.visible !== 'boolean') a.visible = true;
             if (!a.source) a.source = echoNames.has(a.name) ? 'echo' : 'native';
@@ -253,7 +253,7 @@
         }
     }
     function saveEchoSuppressed() {
-        try { persist(S_ECHO_SUPPRESS, Array.from(state.echoSuppressed)); } catch (e) { console.warn('[XSAct-QA] 持久化 echo 屏蔽集合失败（已忽略）:', e && e.message); }
+        try { persist(S_ECHO_SUPPRESS, Array.from(state.echoSuppressed)); } catch (e) { console.warn('[QiAct] 持久化 echo 屏蔽集合失败（已忽略）:', e && e.message); }
     }
     function rebuildEchoSuppressed() {
         // 以持久化的屏蔽集合为基础，同步当前所有 source==='echo' 的自定义动作名，
@@ -416,7 +416,7 @@
                     names.add(a.Name);
                 });
             });
-        } catch (e) { console.warn('[XSAct-QA] 扫描 echo 原始动作名失败:', e.message); }
+        } catch (e) { console.warn('[QiAct] 扫描 echo 原始动作名失败:', e.message); }
         return names;
     }
     /** 读取 BC 原生活动数组（绕过本插件对 AssetAllActivities 的 hook，拿到未过滤的原始数组）。
@@ -452,7 +452,7 @@
                     if (caIsEchoSuppressed(ActivityFemale3DCGOrdering[j])) ActivityFemale3DCGOrdering.splice(j, 1);
                 }
             }
-        } catch (e) { console.warn('[XSAct-QA] 物理移除 echo 原始动作失败（已忽略）:', e.message); }
+        } catch (e) { console.warn('[QiAct] 物理移除 echo 原始动作失败（已忽略）:', e.message); }
     }
     /** 迁移完成后清理原 echo/回声 中的「动作数据」。
      *  仅清空其 ExtensionSettings[ECHO]['动作数据']（不动 echo 其他配置），
@@ -516,14 +516,14 @@
                     ServerAccountUpdate.QueueData('ExtensionSettings', Player.ExtensionSettings);
                     ServerAccountUpdate.SyncToServer();
                 }
-            } catch (e) { console.warn('[XSAct-QA] 持久化 echo 设置失败（已忽略）:', e && e.message); }
+            } catch (e) { console.warn('[QiAct] 持久化 echo 设置失败（已忽略）:', e && e.message); }
 
             // 清空 echoData 后再次重建屏蔽集合并移除残留；延迟再扫一次防止 echo 异步回写
             rebuildEchoSuppressed();
             caRemoveSuppressedEchoActivities();
             setTimeout(function() {
                 try { rebuildEchoSuppressed(); caRemoveSuppressedEchoActivities(); }
-                catch (e) { console.warn('[XSAct-QA] 延迟清理 echo 残留失败（已忽略）:', e && e.message); }
+                catch (e) { console.warn('[QiAct] 延迟清理 echo 残留失败（已忽略）:', e && e.message); }
             }, 1200);
 
             toast('已清理原 echo 数据（' + before + ' 项）', '#46E0A0');

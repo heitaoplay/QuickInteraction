@@ -104,15 +104,15 @@
             }
         } catch (e) {
             // 区分真实网络错误与脚本内部错误：脚本 bug（如未定义常量）不应伪装成「网络失败」误导排查
-            console.warn('[XSAct-QA] 更新检查未成功（跳过本次轮询，不影响游戏）:', e && e.message);
+            console.warn('[QiAct] 更新检查未成功（跳过本次轮询，不影响游戏）:', e && e.message);
         }
     }
 
     function startUpdateChecker() {
         if (state.updateTimer) return;
         // 加载后 30 秒先查一次，之后每 5 分钟轮询
-        setTimeout(function() { checkUpdate().catch(function(e) { console.warn('[XSAct-QA] 更新检查失败（已忽略）:', e && e.message); }); }, 30000);
-        state.updateTimer = setInterval(function() { checkUpdate().catch(function(e) { console.warn('[XSAct-QA] 更新检查失败（已忽略）:', e && e.message); }); }, 5 * 60 * 1000);
+        setTimeout(function() { checkUpdate().catch(function(e) { console.warn('[QiAct] 更新检查失败（已忽略）:', e && e.message); }); }, 30000);
+        state.updateTimer = setInterval(function() { checkUpdate().catch(function(e) { console.warn('[QiAct] 更新检查失败（已忽略）:', e && e.message); }); }, 5 * 60 * 1000);
     }
 
     // ════════════════════════════════════════════════════════════════════════

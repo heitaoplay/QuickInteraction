@@ -1,6 +1,6 @@
 // ==UserScript==
-// @name         快捷互动 Loader (QuickInteraction Loader)
-// @name:zh      快捷互动 Loader
+// @name         QiAct Loader (QuickInteraction Loader)
+// @name:zh      QiAct Loader
 // @namespace    https://github.com/heitaoplay/QuickInteraction
 // @version      1.1.0
 // @description  为 Bondage Club 提供快捷互动操作台。点击角色身体部位即可快速选择动作，支持全员动作、连招、收藏和动作模式切换。安装后刷新 BC 页面即自动更新到最新版。
@@ -21,7 +21,7 @@
 // ==/UserScript==
 
 /*
- * 快捷互动 Loader
+ * QiAct Loader
  * 本脚本只负责加载主脚本。刷新 BC 页面时自动拉取最新版本。
  */
 import('https://heitaoplay.github.io/QuickInteraction/assets/main.js?v=' + Date.now());

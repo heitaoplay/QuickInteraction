@@ -2,13 +2,13 @@
     async function main() {
         logD('v' + VERSION + ' 初始化...');
 
-        // 热重注入（CDP 反复注入测试）场景：若上一轮实例仍挂在 window.__XSActQA，
+        // 热重注入（CDP 反复注入测试）场景：若上一轮实例仍挂在 window.__QiAct，
         // 先卸载其 bcModSdk 注册，避免 "it is already loaded" 导致本次 registerMod 失败、
         // 进而 setupHooks 拿不到 modApi（降级成空对象）→ 面板/动作列表无法渲染。
         try {
-            if (window.__XSActQA && window.__XSActQA.state && window.__XSActQA.state.modApi &&
-                typeof window.__XSActQA.state.modApi.unload === 'function') {
-                window.__XSActQA.state.modApi.unload();
+            if (window.__QiAct && window.__QiAct.state && window.__QiAct.state.modApi &&
+                typeof window.__QiAct.state.modApi.unload === 'function') {
+                window.__QiAct.state.modApi.unload();
             }
         } catch (_) { /* 卸载旧实例失败不阻塞本次启动 */ }
 
@@ -26,7 +26,7 @@
             logD('state.modApi 注册完成');
         } catch (regErr) {
             // 已注册过（热重注入场景）：尝试从已有 mods 中取回
-            console.warn('[XSAct-QA] registerMod 异常（可能已注册）:', regErr.message);
+            console.warn('[QiAct] registerMod 异常（可能已注册）:', regErr.message);
             try {
                 var mods = bcModSdk.getModsInfo ? bcModSdk.getModsInfo() : [];
                 for (var mi = 0; mi < mods.length; mi++) {
@@ -44,7 +44,7 @@
         logD('玩家已登入:', Player.AccountName || Player.Name);
 
         // 修补 ActivityDictionaryText（LSCG 等 mod 文本解析兜底，详见 patchActivityDictionaryText 注释）
-        try { patchActivityDictionaryText(); } catch (e) { console.warn('[XSAct-QA] patchActivityDictionaryText 失败:', e); }
+        try { patchActivityDictionaryText(); } catch (e) { console.warn('[QiAct] patchActivityDictionaryText 失败:', e); }
 
         // 加载存储
         state.isActive = loadSetting(S_ENABLED, false);
@@ -62,32 +62,32 @@
         applyTheme(state.theme);
 
         // 注入样式
-        try { injectStyles(); } catch (e) { console.warn('[XSAct-QA] injectStyles 失败:', e); }
+        try { injectStyles(); } catch (e) { console.warn('[QiAct] injectStyles 失败:', e); }
 
         // 自定义 tooltip（替换原生 title，仅作用于本插件 UI）
-        try { initTooltip(); } catch (e) { console.warn('[XSAct-QA] initTooltip 失败:', e); }
+        try { initTooltip(); } catch (e) { console.warn('[QiAct] initTooltip 失败:', e); }
 
         // 注册设置
-        try { registerSettings(); } catch (e) { console.warn('[XSAct-QA] registerSettings 失败:', e); }
+        try { registerSettings(); } catch (e) { console.warn('[QiAct] registerSettings 失败:', e); }
 
         // 安装 hooks
-        try { setupHooks(); } catch (e) { console.error('[XSAct-QA] setupHooks 失败:', e); }
+        try { setupHooks(); } catch (e) { console.error('[QiAct] setupHooks 失败:', e); }
 
         // 若设置默认开启，且当前在聊天室，自动进入动作模式
         if (state.isActive && typeof CurrentScreen !== 'undefined' && CurrentScreen === 'ChatRoom') {
-            try { enterActionMode(); } catch (e) { console.warn('[XSAct-QA] 自动进入动作模式失败:', e); }
+            try { enterActionMode(); } catch (e) { console.warn('[QiAct] 自动进入动作模式失败:', e); }
         }
 
         // 聊天室内确保浮动开关（闪电图标）常驻可见；用轮询守卫，离开/回到聊天室都能正确恢复
         if (typeof CurrentScreen !== 'undefined') {
-            try { startVisibilityGuard(); guardToggleVisibility(); } catch (e) { console.warn('[XSAct-QA] 启动浮动开关守卫失败:', e); }
+            try { startVisibilityGuard(); guardToggleVisibility(); } catch (e) { console.warn('[QiAct] 启动浮动开关守卫失败:', e); }
         }
 
         // 启动更新/公告检测（脚本内 5 分钟轮询，玩家端收到，无需刷新页面）
-        try { startUpdateChecker(); } catch (e) { console.warn('[XSAct-QA] 启动更新检测失败:', e); }
+        try { startUpdateChecker(); } catch (e) { console.warn('[QiAct] 启动更新检测失败:', e); }
 
         // 暴露调试/控制接口（无论前面是否出错，必须暴露）
-        window.__XSActQA = {
+        window.__QiAct = {
             toggle: toggleActionMode,
             enter: enterActionMode,
             exit: exitActionMode,
@@ -156,7 +156,7 @@
 
     // 启动
     main().catch(function(err) {
-        console.error('[XSAct-QA] 初始化失败:', err);
+        console.error('[QiAct] 初始化失败:', err);
     });
 
 })();

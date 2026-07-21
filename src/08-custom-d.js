@@ -84,7 +84,7 @@
             updateCustomActionPanel(state.selectedTarget);
             toast('已从 echo/回声 导入 ' + imported + ' 个动作', '#46E0A0');
         } catch (e) {
-            console.warn('[XSAct-QA] 导入 echo/回声 动作失败:', e.message);
+            console.warn('[QiAct] 导入 echo/回声 动作失败:', e.message);
             toast('导入失败：' + e.message, '#FF5C5C');
         }
     }
@@ -102,7 +102,7 @@
             URL.revokeObjectURL(url);
             toast('已导出 ' + state.customActions.length + ' 个动作', '#46E0A0');
         } catch (e) {
-            console.warn('[XSAct-QA] 导出自定义动作失败:', e.message);
+            console.warn('[QiAct] 导出自定义动作失败:', e.message);
             toast('导出失败：' + e.message, '#FF5C5C');
         }
     }
@@ -158,14 +158,14 @@
                     updateCustomActionPanel(state.selectedTarget);
                     toast('导入完成：新增 ' + imported + ' 个，更新 ' + updated + ' 个', '#46E0A0');
                 } catch (inner) {
-                    console.warn('[XSAct-QA] 解析 JSON 失败:', inner.message);
+                    console.warn('[QiAct] 解析 JSON 失败:', inner.message);
                     toast('JSON 解析失败：' + inner.message, '#FF5C5C');
                 }
             };
             reader.onerror = function() { toast('读取文件失败', '#FF5C5C'); };
             reader.readAsText(file);
         } catch (e) {
-            console.warn('[XSAct-QA] 导入本地文件失败:', e.message);
+            console.warn('[QiAct] 导入本地文件失败:', e.message);
             toast('导入失败：' + e.message, '#FF5C5C');
         }
     }
@@ -202,7 +202,7 @@
                     }
                 }
             }
-        } catch (e) { console.warn('[XSAct-QA] 清理自定义动作残留失败:', e.message); }
+        } catch (e) { console.warn('[QiAct] 清理自定义动作残留失败:', e.message); }
         state.customActions.forEach(function(act) { caRegister(act); });
     }
 

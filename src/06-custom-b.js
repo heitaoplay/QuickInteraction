@@ -74,7 +74,7 @@
                 var scopeBadge = a.scope === 'self' ? '<span class="xsact-ca-badge self">仅自己</span>'
                     : a.scope === 'other' ? '<span class="xsact-ca-badge other">仅他人</span>'
                     : '<span class="xsact-ca-badge any">皆可</span>';
-                var sourceBadge = a.source === 'echo' ? '<span class="xsact-ca-src echo" title="来自 echo/回声 导入">echo</span>' : '<span class="xsact-ca-src native" title="本插件创建">XSAct</span>';
+                var sourceBadge = a.source === 'echo' ? '<span class="xsact-ca-src echo" title="来自 echo/回声 导入">echo</span>' : '<span class="xsact-ca-src native" title="本插件创建">QiAct</span>';
                 var partLbl = (BODY_PARTS.find(function(p) { return p.group === a.group; }) || {}).label || a.group;
                 var isVisible = a.visible !== false;
                 var isSel = !!selSet[a.id];
@@ -286,7 +286,7 @@
                     dragEl = card;
                     state.caDragId = card.dataset.id;
                     e.dataTransfer.effectAllowed = 'move';
-                    try { e.dataTransfer.setData('text/plain', card.dataset.id); } catch (err) { console.warn('[XSAct-QA] 拖拽 setData 失败（已忽略）:', err && err.message); }
+                    try { e.dataTransfer.setData('text/plain', card.dataset.id); } catch (err) { console.warn('[QiAct] 拖拽 setData 失败（已忽略）:', err && err.message); }
                     setTimeout(function(){ if (dragEl) dragEl.classList.add('dragging'); }, 0);
                 });
                 dragList.addEventListener('dragover', function(e) {

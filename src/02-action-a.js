@@ -14,7 +14,7 @@
                     }).filter(function(a) { return a && a.Name; });
                 }
             } catch (e) {
-                console.warn('[XSAct-QA] ActivityAllowedForGroup 失败，改用全量列表:', e.message);
+                console.warn('[QiAct] ActivityAllowedForGroup 失败，改用全量列表:', e.message);
             }
         }
 
@@ -125,11 +125,11 @@
                 return r;
             });
             window.__XSACT_ADT_PATCHED = true;
-            logD('[XSAct-QA] 已打 ActivityDictionaryText SDK hook 兜底');
+            logD('[QiAct] 已打 ActivityDictionaryText SDK hook 兜底');
             return;
         }
         // 降级：SDK 不可用时直接覆盖（仅在热注入/异常降级场景触发，可能触发 BCX 警告）
-        console.warn('[XSAct-QA] ModSDK hook 不可用，降级为 ActivityDictionaryText 直接覆盖；建议检查是否重复注入');
+        console.warn('[QiAct] ModSDK hook 不可用，降级为 ActivityDictionaryText 直接覆盖；建议检查是否重复注入');
         var _orig = window.ActivityDictionaryText;
         window.ActivityDictionaryText = function(key) {
             var r = _orig.apply(this, arguments);
@@ -146,7 +146,7 @@
             return r;
         };
         window.__XSACT_ADT_PATCHED = true;
-        logD('[XSAct-QA] 已打 ActivityDictionaryText 直接兜底补丁（SDK 不可用）');
+        logD('[QiAct] 已打 ActivityDictionaryText 直接兜底补丁（SDK 不可用）');
     }
 
     function getActivityLabelFallback(name, targetGroup) {

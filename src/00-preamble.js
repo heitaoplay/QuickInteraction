@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         快捷互动 (QuickInteraction)
+// @name         快捷互动 (QiAct)
 // @name:zh      快捷互动
 // @namespace    https://github.com/heitaoplay/QuickInteraction
 // @version      1.1.0

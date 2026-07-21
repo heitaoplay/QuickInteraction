@@ -47,11 +47,11 @@
                     .replace(/SourceCharacter/g, caSrc)
                     .replace(/TargetCharacter/g, caTgt);
                 return {
-                    Content: 'XSAct_ChatFallback',
+                    Content: 'QiAct_ChatFallback',
                     Type: 'Action',
                     Dictionary: [
                         charTagForAction(Player),
-                        { Tag: 'MISSING TEXT IN "Interface.csv": XSAct_ChatFallback', Text: caDialog }
+                        { Tag: 'MISSING TEXT IN "Interface.csv": QiAct_ChatFallback', Text: caDialog }
                     ]
                 };
             }
@@ -114,7 +114,7 @@
                     sentence = '对' + (targetChar && (targetChar.Nickname || targetChar.Name || targetChar.AccountName) || '某人') + '做了「' + displayName + '」';
                 }
             }
-            var fbKey = 'XSAct_ChatFallback';
+            var fbKey = 'QiAct_ChatFallback';
             return {
                 Content: fbKey,
                 Type: 'Action',
@@ -238,7 +238,7 @@
                         ActivityRun(Player, charObj, targetGroupObj, { Activity: activityObj, Item: activityItem }, false);
                     }
                 } catch (runErr) {
-                    console.warn('[XSAct-QA] ActivityRun 本地副作用执行失败:', runErr.message);
+                    console.warn('[QiAct] ActivityRun 本地副作用执行失败:', runErr.message);
                 }
             }
 
@@ -256,12 +256,12 @@
                 if (typeof ServerSend === 'function') {
                     ServerSend('ChatRoomChat', packet);
                 } else {
-                    console.warn('[XSAct-QA] ServerSend 暂不可用，动作未实际发送');
+                    console.warn('[QiAct] ServerSend 暂不可用，动作未实际发送');
                 }
                 recordLastAction(name, charObj.MemberNumber, group, packet.Dictionary);
                 return true;
             } catch (sendErr) {
-                console.warn('[XSAct-QA] ServerSend 失败:', sendErr.message);
+                console.warn('[QiAct] ServerSend 失败:', sendErr.message);
             } finally {
                 charObj.FocusGroup = prevFocus;
             }
@@ -270,7 +270,7 @@
             toast('该动作暂不可用', '#FF5C5C');
             return false;
         } catch (e) {
-            console.error('[XSAct-QA] 执行动作异常:', e);
+            console.error('[QiAct] 执行动作异常:', e);
             toast('执行失败: ' + e.message, '#FF5C5C');
             return false;
         }

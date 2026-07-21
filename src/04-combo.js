@@ -85,7 +85,7 @@
     }
 
     /* ══════════════════════════════════════════════════════════════
-       自定义动作（XSAct 自包含版，替代 echo/回声 echo-activity-ext）
+       自定义动作（QiAct 自包含版，替代 echo/回声 echo-activity-ext）
        —— 参考 echo 注册内核，但完全重做 UI；直接用 BC 原生 ActivityAdd，
           不引入 sugarch 依赖。跨客户端可见性靠 makeActivityPacket 的
           Action 兜底分支（名字含下划线 → 走彩色小字动作，文本用本地字典）。

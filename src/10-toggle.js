@@ -132,8 +132,8 @@
         }
     }
     function startVisibilityGuard() {
-        if (window.__XSActQA_VisGuard) { try { clearInterval(window.__XSActQA_VisGuard); } catch (_) { /* 忽略：清理旧定时器失败无影响 */ } }
-        window.__XSActQA_VisGuard = setInterval(guardToggleVisibility, 500);
+        if (window.__QiAct_VisGuard) { try { clearInterval(window.__QiAct_VisGuard); } catch (_) { /* 忽略：清理旧定时器失败无影响 */ } }
+        window.__QiAct_VisGuard = setInterval(guardToggleVisibility, 500);
     }
 
     // ════════════════════════════════════════════════════════════════════════

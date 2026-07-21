@@ -42,7 +42,7 @@
         applyPanelPosition();
         renderPanel();
         renderPendingBanner();
-        checkUpdate().catch(function(e) { console.warn('[XSAct-QA] 更新检查失败（已忽略）:', e && e.message); });
+        checkUpdate().catch(function(e) { console.warn('[QiAct] 更新检查失败（已忽略）:', e && e.message); });
 
         // 恢复自己模式开关状态
         state.selfModeActive = loadSetting(S_SELF, false);

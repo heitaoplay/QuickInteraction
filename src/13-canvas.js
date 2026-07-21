@@ -44,7 +44,7 @@
                 layout.push({ char: c, x: useX.x, y: useY.y, zoom: (loop ? loop.zoom : (anchor ? anchor.zoom : 1)), src: loop ? 'loop' : 'anchor' });
             });
         } catch (e) {
-            console.warn('[XSAct-QA] getCharLayout 失败:', e);
+            console.warn('[QiAct] getCharLayout 失败:', e);
         }
         return layout;
     }

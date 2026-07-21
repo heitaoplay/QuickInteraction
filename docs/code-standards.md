@@ -1,7 +1,7 @@
 # 团队 JavaScript / Userscript 代码规范
 
 > 适用范围：BC 相关 Tampermonkey 脚本及团队所有前端 JS 项目。
-> 本规范基于 快捷互动 (QuickInteraction) v0.5.9 真实审查结论制定，可直接落地。
+> 本规范基于 快捷互动 (QiAct) v0.5.9 真实审查结论制定，可直接落地。
 > 规范用词：`必须` = 强制；`禁止` = 不允许；`建议` = 推荐。
 
 ---
@@ -43,7 +43,7 @@
 
 - 引入 `const DEBUG = false;` + 封装：
   ```js
-  function logD(...a){ if (DEBUG) console.log('[XSAct-QA]', ...a); }
+  function logD(...a){ if (DEBUG) console.log('[QiAct]', ...a); }
   ```
 - **生产代码禁止** `console.log` 调试输出；仅保留 `console.warn/error` 用于真实异常。
 - 日志统一前缀 `[模块名]`，方便过滤。

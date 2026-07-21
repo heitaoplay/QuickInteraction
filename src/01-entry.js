@@ -4,11 +4,11 @@
     // ════════════════════════════════════════════════════════════════════════
     // 防重复加载
     // ════════════════════════════════════════════════════════════════════════
-    if (window.__XSActQA_Loaded__) {
-        console.warn('[XSAct-QA] 已加载，跳过');
+    if (window.__QiAct_Loaded__) {
+        console.warn('[QiAct] 已加载，跳过');
         return;
     }
-    window.__XSActQA_Loaded__ = true;
+    window.__QiAct_Loaded__ = true;
 
     // ════════════════════════════════════════════════════════════════════════
     // 调试开关与日志封装
@@ -19,7 +19,7 @@
     const DEBUG = false;
     function logD() {
         if (!DEBUG) return;
-        var args = ['[XSAct-QA]'];
+        var args = ['[QiAct]'];
         for (var i = 0; i < arguments.length; i++) args.push(arguments[i]);
         console.log.apply(console, args);
     }
@@ -30,16 +30,16 @@
     function reportHookError(name, e) {
         if (_hookErrSeen[name] >= 3) return;
         _hookErrSeen[name] = (_hookErrSeen[name] || 0) + 1;
-        console.warn('[XSAct-QA] hook『' + name + '』异常（已忽略，最多报 3 次）:', e && e.message);
+        console.warn('[QiAct] hook『' + name + '』异常（已忽略，最多报 3 次）:', e && e.message);
     }
     // 服务器设置同步失败：必须可见 + 至少一次 toast（数据静默丢失红线）
     let _serverSyncWarned = false;
     function warnServerSync(e) {
-        console.warn('[XSAct-QA] 服务器设置同步失败，已回退本地存储:', e);
+        console.warn('[QiAct] 服务器设置同步失败，已回退本地存储:', e);
         if (!_serverSyncWarned) { _serverSyncWarned = true; toast('设置同步到服务器失败，已保留在本地', '#FF5C5C'); }
     }
 
-    const VERSION = '1.1.5';
+    const VERSION = '1.1.6';
 
     // ── 存储键 ──
     const S_ENABLED = 'xsact_qa_enabled';
@@ -75,7 +75,7 @@
         selfModeActive: false,        // 自己模式开关
         combos: [],                   // 自定义组合
         editingComboId: null,         // 正在编辑的组合 id
-        customActions: [],            // 自定义动作（XSAct 自包含版，替代 echo/回声）
+        customActions: [],            // 自定义动作（QiAct 自包含版，替代 echo/回声）
         echoSuppressed: new Set(),    // 已导入的 echo 原始动作名（屏蔽用）
         echoPrefixes: new Set(),     // 已导入 echo 动作的中文显示前缀（安全前缀兜底，仅匹配 echo 命名空间，不误伤 BC 原生动作）
         editingCustomId: null,        // 正在编辑的自定义动作 id
@@ -208,7 +208,7 @@
     /* ===== 3. 存储层（localStorage + 服务器 OnlineSettings） ===== */
     function loadStorage(key, fallback) {
         try { var v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; }
-        catch (e) { console.error('[XSAct-QA] 读取存储失败 ' + key + ':', e); return fallback; }
+        catch (e) { console.error('[QiAct] 读取存储失败 ' + key + ':', e); return fallback; }
     }
     // 安全序列化：遇到循环引用时跳過（用 [Circular] 占位），避免保存直接抛错丢数据。
     // 同时尽力在二次报错里打印出循环路径，方便定位真实根因（正常扁平数据不受影响）。
@@ -225,21 +225,21 @@
     function saveStorage(key, val) {
         try { localStorage.setItem(key, JSON.stringify(val)); }
         catch (e) {
-            console.error('[XSAct-QA] 写入存储失败 ' + key + ':', e);
+            console.error('[QiAct] 写入存储失败 ' + key + ':', e);
             try {
                 if (typeof val === 'object' && val) {
                     console.error('  keys=', Object.keys(val).join(','), 'types=', Object.keys(val).map(function(k){ return typeof val[k]; }).join(','));
                 }
-            } catch (_) { console.warn('[XSAct-QA] 诊断存储值结构失败（已忽略）:', _ && _.message); }
+            } catch (_) { console.warn('[QiAct] 诊断存储值结构失败（已忽略）:', _ && _.message); }
             // 二次兜底：跳过循环引用，保证数据尽量落盘，绝不让存储写入中断业务流程
-            try { localStorage.setItem(key, safeStringify(val)); console.warn('[XSAct-QA] 已用安全序列化兜底写入 ' + key + '（跳过循环引用）'); }
-            catch (e2) { console.error('[XSAct-QA] 安全兜底仍失败 ' + key + ':', e2); }
+            try { localStorage.setItem(key, safeStringify(val)); console.warn('[QiAct] 已用安全序列化兜底写入 ' + key + '（跳过循环引用）'); }
+            catch (e2) { console.error('[QiAct] 安全兜底仍失败 ' + key + ':', e2); }
         }
     }
 
     // ── 主题 / 设置键 ──
     const S_THEME = 'xsact_qa_theme';
-    const MOD_NS  = 'XSAct_QA';
+    const MOD_NS  = 'QiAct';
 
     // 主题定义：仅保留深色 / 浅色两套，强调色固定玫红
     const THEMES = [
@@ -289,7 +289,7 @@
             if (s !== undefined) return s;
             return loadStorage(key, fallback);
         } catch (e) {
-            console.error('[XSAct-QA] 读取设置失败 ' + key + ':', e);
+            console.error('[QiAct] 读取设置失败 ' + key + ':', e);
             return fallback;
         }
     }

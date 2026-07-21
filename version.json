@@ -1,18 +1,18 @@
 {
-  "version": "1.1.5",
+  "version": "1.1.6",
   "date": "2026-07-21",
   "severity": "normal",
   "summary": [
-    "【修复】一键清理原 echo 自定义动作：彻底移除账号里残留的 XSAct_CA_ / XSQAct_ 旧条目（含从 echo 导入但已废弃的动作），点击后「我的动作」列表与 BC 原生活动面板同步清空",
-    "【修复】自定义动作在 BC 原生活动面板无图标 / 破图：为按钮注入品牌图标（玫红方块 + 白色闪电），辨识度与一致性提升，不再显示破图",
-    "【修复】从 BC 原生动作界面点击自定义动作时人物名称占位符错乱 / 接收端 MISSING TEXT：拦截原生 ActivityRun，统一改走与插件界面一致的发包逻辑，跨客户端均可正常显示中文动作文本"
+    "【更名】品牌缩写 XSAct* → QiAct*：Mod 命名空间、调试句柄（__QiAct / __QiAct_Loaded__ 等）、日志前缀、自定义动作卡片来源徽章（原误显示 XSAct，易与小酥的 XSAct_ 混淆）统一改为 QiAct，辨识更清晰",
+    "【更名】内部兜底字典键 XSAct_ChatFallback → QiAct_ChatFallback（发送端与接收端成对同步，跨客户端中文动作文本不丢）",
+    "【更名】油猴脚本显示名「快捷互动 (QuickInteraction)」→「快捷互动 (QiAct)」、Loader 名「快捷互动 Loader」→「QiAct Loader」，缩短可见名称；仓库名 QuickInteraction 与更新 URL 保持不变，不影响老用户自动更新"
   ],
   "announcement": {
-    "id": "2026-07-21-nativefix-v1.1.5",
+    "id": "2026-07-21-rename-v1.1.6",
     "severity": "normal",
-    "title": "XSAct-QuickAction v1.1.5 原生动作界面修复",
-    "message": "本次更新修复了自定义动作在 BC 原生动作界面的三处问题：① 清除账号里残留的旧版（XSAct_CA_ / XSAct）自定义动作；② 为原生界面里的自定义动作按钮加上品牌图标，不再破图；③ 修正从原生界面点击自定义动作时人物名称占位符错乱、对方显示 MISSING TEXT 的问题，现已与插件界面行为完全一致。建议更新。",
-    "detailsUrl": "https://github.com/heitaoplay/QuickInteraction/releases/tag/v1.1.5"
+    "title": "QiAct v1.1.6 品牌更名",
+    "message": "本次更新将插件内部品牌缩写从 XSAct 系列统一更名为 QiAct（如 Mod 命名空间、调试句柄、日志前缀，以及「我的动作」卡片上原本误显示 XSAct 的来源徽章——那个 XSAct 容易和小酥的 XSAct_ 动作前缀搞混，现已更正为 QiAct）。油猴脚本与 Loader 的可见名称也缩短了。功能与行为完全不变，自动更新不受影响。",
+    "detailsUrl": "https://github.com/heitaoplay/QuickInteraction/releases/tag/v1.1.6"
   },
-  "detailsUrl": "https://github.com/heitaoplay/QuickInteraction/releases/tag/v1.1.5"
+  "detailsUrl": "https://github.com/heitaoplay/QuickInteraction/releases/tag/v1.1.6"
 }

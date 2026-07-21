@@ -1,4 +1,4 @@
-# 快捷互动 · XSAct-QuickAction v1.1.0 发布
+# 快捷互动 · QiAct v1.1.0 发布
 
 > 发布日期：2026-07-21 ｜ 作者：Tao MUSE ｜ 技术支持：Liko
 
