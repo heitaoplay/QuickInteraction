@@ -178,7 +178,7 @@
         //   旧前缀与其冲突导致原生动作界面崩溃，升级后必须清除。）
         try {
             var fam = (Player && Player.AssetFamily) || 'Female3DCG';
-            var acts = AssetAllActivities(fam);
+            var acts = caRawAllActivities(fam);
             var validNames = new Set();
             state.customActions.forEach(function(a) { validNames.add(caActivityName(a)); });
             var OLD_PREFIXES = ['XSAct_CA_', CA_PREFIX];

@@ -54,6 +54,18 @@
 
         html += '<div class="xsact-ca-beta">自定义动作功能当前为【测试版(Beta)】，仍在开发中，可能存在不稳定或未完善之处，建议谨慎使用并及时反馈问题。</div>';
 
+        // 迁移提示：原 echo/回声 中仍有动作数据 → 提供一键清理入口
+        try {
+            var _echoData = caGetEchoData();
+            var _hasEchoSrc = state.customActions.some(function(a) { return a.source === 'echo'; });
+            if (_echoData && Object.keys(_echoData).length && _hasEchoSrc) {
+                html += '<div class="xsact-ca-echo-clean" id="xsact-ca-echo-clean">' +
+                    '<div class="xsact-ca-echo-clean-text">检测到原 echo/回声 中仍有 <b>' + Object.keys(_echoData).length + '</b> 个自定义动作数据。迁移完成后建议清理，避免动作重复显示与使用后乱码。</div>' +
+                    '<button class="xsact-ca-echo-clean-btn" id="xsact-ca-echo-clean-btn" type="button">清理原 echo 数据</button>' +
+                '</div>';
+            }
+        } catch (e) {}
+
         if (!acts.length) {
             html += '<div class="xsact-qa-empty xsact-ca-empty">还没有自定义动作。点「新建」创建，或点「导入」从 echo/回声 迁移。</div>';
         } else {
@@ -143,6 +155,13 @@
         });
         var exportBtn = listEl.querySelector('#xsact-ca-export');
         if (exportBtn) exportBtn.addEventListener('click', exportCustomActions);
+        var echoCleanBtn = listEl.querySelector('#xsact-ca-echo-clean-btn');
+        if (echoCleanBtn) echoCleanBtn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            if (confirm('确定清理原 echo/回声 中的自定义动作数据吗？\n仅删除其「动作数据」，不影响本插件与其他配置（清理后系统更稳定）。')) {
+                caCleanupEchoData();
+            }
+        });
         var searchInput = listEl.querySelector('#xsact-ca-search');
         if (searchInput) searchInput.addEventListener('input', function() {
             var q = searchInput.value.trim().toLowerCase();

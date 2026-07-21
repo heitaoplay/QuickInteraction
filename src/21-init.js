@@ -118,10 +118,12 @@
             // ── 自定义动作 / echo 屏蔽调试 ──
             state: state,
             getCustomActions: function() { return state.customActions.slice(); },
+            getEchoData: caGetEchoData,
             getEchoSuppressed: function() { return Array.from(state.echoSuppressed); },
             importFromEcho: importCustomFromEcho,
             rebuildEchoSuppressed: rebuildEchoSuppressed,
             removeSuppressedEchoActivities: caRemoveSuppressedEchoActivities,
+            cleanupEchoData: caCleanupEchoData,
             upsertCustom: upsertCustom,
             deleteCustom: deleteCustom,
             caHash: caHash,

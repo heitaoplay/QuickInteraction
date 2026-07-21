@@ -1,3 +1,11 @@
+    // ── 原生动作按钮上的自定义动作图标（与插件视觉一致：玫红强调色 + 白色闪电）──
+    var XSACT_ACTIVITY_ICON = 'data:image/svg+xml;utf8,' + encodeURIComponent(
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">' +
+        '<rect x="2" y="2" width="20" height="20" rx="5" fill="#FF5C7A"/>' +
+        '<path d="M13 6l-5 7h4l-1 5 6-8h-4z" fill="#ffffff"/>' +
+        '</svg>'
+    );
+
     function initTooltip() {
         if (window.__xsactTooltipReady) return;
         window.__xsactTooltipReady = true;
@@ -120,6 +128,23 @@
             console.warn('[XSAct-QA] ActivityAllowedForGroup hook 失败:', e.message);
         }
 
+        // ── Hook: AssetAllActivities —— 枚举期兜底过滤 echo 端已导入的同名原始动作 ──
+        // 仅返回过滤后的「副本」，绝不改写全局数组（caRegister/caUnregister 等内部改写
+        // 代码统一走 caRawAllActivities 读原始数组，因此本 hook 不会影响自定义动作注册）。
+        // 优先级 0：在所有 mod 读取活动列表时即剔除 echo 原始项，覆盖 BC 原生活动面板、
+        // 第三方 mod 枚举等任何直接调用 AssetAllActivities 的路径，解决屏蔽漏网。
+        try {
+            state.modApi.hookFunction('AssetAllActivities', 0, function(args, next) {
+                var result = next(args);
+                if (!state.echoSuppressed || state.echoSuppressed.size === 0 || !Array.isArray(result)) return result;
+                try {
+                    return result.filter(function(a) { return !caIsEchoSuppressed(a && a.Name); });
+                } catch (e) { return result; }
+            });
+        } catch (e) {
+            console.warn('[XSAct-QA] AssetAllActivities hook 失败:', e.message);
+        }
+
         // DrawCharacter(Character, X, Y, Zoom, ...) 的 X/Y/Zoom 是角色最终画上去的位置，
         // 含 ECHO 贴贴等活动的 X 位移，比 ChatRoomCharacterViewLoopCharacters 更准。
         // 这是线框能精确贴合人物模型的关键。
@@ -228,6 +253,64 @@
             }
             return next(args);
         });
+
+        // ── Hook: ActivityRun（优先级 -100，先于记录 hook 拦截）──
+        // 原生动作界面点击我们的自定义动作时，BC 原生 ActivityRun 会按「当前菜单部位组」
+        // 与「acted 是否为玩家」拼出 ChatSelf/ChatOther-<group>-<XSQAct_xxx> 再发送，
+        // 这与我们的字典注册组 / self-other 选择可能不一致（例如自我动作点到他人身上会变成
+        // ChatOther = 无占位符的纯标签），导致接收端 MISSING TEXT 或「人物名称占位符」未被替换。
+        // 这里拦截：本地副作用仍交给 BC（sendMessage=false），消息改走与插件 UI 完全一致的
+        // makeActivityPacket，保证原生界面与插件界面行为一致、跨客户端可读。
+        try {
+            state.modApi.hookFunction('ActivityRun', -100, function(args, next) {
+                try {
+                    var _item = args[3] || {};
+                    var _name = (_item.Activity && _item.Activity.Name) || '';
+                    var _send = args[4];
+                    if (_send !== false && typeof _name === 'string' && _name.indexOf(CA_PREFIX) === 0) {
+                        var _ca = caFindByActivityName(_name);
+                        if (_ca) {
+                            var _acted = args[1];
+                            try { args[4] = false; next(args); }
+                            catch (e) { console.warn('[XSAct-QA] 原生点击本地副作用失败:', e.message); }
+                            var _packet = makeActivityPacket(_acted, _ca.group, _name, _item.Item || null);
+                            if (_packet) {
+                                var _prev = _acted ? _acted.FocusGroup : undefined;
+                                var _fg = (typeof AssetGroup !== 'undefined' && Array.isArray(AssetGroup))
+                                    ? AssetGroup.find(function(g) { return g && g.Name === _ca.group; }) : null;
+                                try {
+                                    if (_acted) _acted.FocusGroup = _fg || { Name: _ca.group };
+                                    if (typeof ServerSend === 'function') ServerSend('ChatRoomChat', _packet);
+                                } finally { if (_acted) _acted.FocusGroup = _prev; }
+                            }
+                            return; // 已自行发包，阻断 BC 默认 Activity 包
+                        }
+                    }
+                } catch (e) { console.warn('[XSAct-QA] 原生点击拦截异常，回退 BC 默认:', e.message); }
+                return next(args);
+            });
+        } catch (e) {
+            console.warn('[XSAct-QA] ActivityRun 原生点击拦截 hook 失败:', e.message);
+        }
+
+        // ── Hook: ElementButton.CreateForActivity —— 为自定义动作按钮注入图标 ──
+        // BC 的 Activity 对象无 Image/Icon 字段，原生按钮会尝试加载
+        // ./Assets/Female3DCG/Activity/<XSQAct_xxx>.png（该文件不存在 → 破图/无图）。
+        // 这里把按钮主图覆盖为插件品牌图标（玫红方块 + 白色闪电 data URL），
+        // 使自定义动作在原生动作界面也能显示辨识图标，且不会出现破图。
+        try {
+            state.modApi.hookFunction('ElementButton.CreateForActivity', 0, function(args, next) {
+                var _ia = args[1] || {};
+                var _n = (_ia.Activity && _ia.Activity.Name) || '';
+                if (typeof _n === 'string' && _n.indexOf(CA_PREFIX) === 0) {
+                    if (!args[4] || typeof args[4] !== 'object') args[4] = {};
+                    args[4].image = XSACT_ACTIVITY_ICON;
+                }
+                return next(args);
+            });
+        } catch (e) {
+            console.warn('[XSAct-QA] ElementButton 图标 hook 失败:', e.message);
+        }
 
         // 将定时器控制绑定到 enter/exit
         var _baseEnter = enterActionMode;

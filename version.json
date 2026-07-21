@@ -1,17 +1,18 @@
 {
-  "version": "1.1.4",
+  "version": "1.1.5",
   "date": "2026-07-21",
   "severity": "normal",
   "summary": [
-    "【修复】消除 BCX 兼容性检查器弹窗「Unknown mod not using ModSDK」：自定义动作不再直接覆盖全局函数 window.ActivityDictionaryText，改为复用既有的 bcModSdk.hookFunction 钩子，BCX 不会再误报",
-    "【修复】自定义动作在 BC 原生活动面板显示 MISSING TEXT：注册 Activity 时同步写入 Label-ChatOther / Label-ChatSelf / ChatOther / ChatSelf 字典翻译（含 R130+ cache 与 ActivityDictionaryText 钩子）"
+    "【修复】一键清理原 echo 自定义动作：彻底移除账号里残留的 XSAct_CA_ / XSQAct_ 旧条目（含从 echo 导入但已废弃的动作），点击后「我的动作」列表与 BC 原生活动面板同步清空",
+    "【修复】自定义动作在 BC 原生活动面板无图标 / 破图：为按钮注入品牌图标（玫红方块 + 白色闪电），辨识度与一致性提升，不再显示破图",
+    "【修复】从 BC 原生动作界面点击自定义动作时人物名称占位符错乱 / 接收端 MISSING TEXT：拦截原生 ActivityRun，统一改走与插件界面一致的发包逻辑，跨客户端均可正常显示中文动作文本"
   ],
   "announcement": {
-    "id": "2026-07-21-bcx-warning-v1.1.4",
+    "id": "2026-07-21-nativefix-v1.1.5",
     "severity": "normal",
-    "title": "XSAct-QuickAction v1.1.4 修复 BCX 兼容性告警",
-    "message": "修复了 BCX 兼容性检查器误报「未知 mod 未使用 ModSDK」的问题（此前因直接覆盖 ActivityDictionaryText 全局函数触发）。更新后该弹窗不再出现，自定义动作在原生面板也不会显示 MISSING。建议更新。",
-    "detailsUrl": "https://github.com/heitaoplay/QuickInteraction/releases/tag/v1.1.4"
+    "title": "XSAct-QuickAction v1.1.5 原生动作界面修复",
+    "message": "本次更新修复了自定义动作在 BC 原生动作界面的三处问题：① 清除账号里残留的旧版（XSAct_CA_ / XSAct）自定义动作；② 为原生界面里的自定义动作按钮加上品牌图标，不再破图；③ 修正从原生界面点击自定义动作时人物名称占位符错乱、对方显示 MISSING TEXT 的问题，现已与插件界面行为完全一致。建议更新。",
+    "detailsUrl": "https://github.com/heitaoplay/QuickInteraction/releases/tag/v1.1.5"
   },
-  "detailsUrl": "https://github.com/heitaoplay/QuickInteraction/releases/tag/v1.1.4"
+  "detailsUrl": "https://github.com/heitaoplay/QuickInteraction/releases/tag/v1.1.5"
 }

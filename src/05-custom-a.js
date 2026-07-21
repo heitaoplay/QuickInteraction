@@ -83,19 +83,29 @@
             // 始终注册 Self 与 Other 两套 Label/Chat，避免原生活动面板在任意上下文显示 MISSING。
             // 自定义动作实际走我们自己的发包逻辑（Type:'Chat'），Chat 句子极少被原生路径使用，
             // 此处仅为补全字典、杜绝 MISSING 文本。
-            caSetDict('Label-ChatOther-' + group + '-' + nm, label);
-            caSetDict('ChatOther-' + group + '-' + nm, dialogOther);
-            caSetDict('Label-ChatSelf-' + group + '-' + nm, label);
-            caSetDict('ChatSelf-' + group + '-' + nm, dialogSelf);
+            // 子部位（如 ItemMouth2）额外在主部位（ItemMouth）注册一份，
+            // 避免 BC 原生面板以主部位为 key 查询时显示 XSQAct_ 内部 ID。
+            var groups = [group];
+            if (typeof SUBPART_TO_BASE !== 'undefined' && SUBPART_TO_BASE[group]) groups.push(SUBPART_TO_BASE[group]);
+            groups.forEach(function(g) {
+                caSetDict('Label-ChatOther-' + g + '-' + nm, label);
+                caSetDict('ChatOther-' + g + '-' + nm, dialogOther);
+                caSetDict('Label-ChatSelf-' + g + '-' + nm, label);
+                caSetDict('ChatSelf-' + g + '-' + nm, dialogSelf);
+            });
         } catch (e) { console.warn('[XSAct-QA] 注册自定义动作字典失败:', e.message); }
     }
     function caUnregisterDictionary(act, nm) {
         try {
             var group = act.group || 'ItemMouth';
-            caRemoveDict('Label-ChatOther-' + group + '-' + nm);
-            caRemoveDict('ChatOther-' + group + '-' + nm);
-            caRemoveDict('Label-ChatSelf-' + group + '-' + nm);
-            caRemoveDict('ChatSelf-' + group + '-' + nm);
+            var groups = [group];
+            if (typeof SUBPART_TO_BASE !== 'undefined' && SUBPART_TO_BASE[group]) groups.push(SUBPART_TO_BASE[group]);
+            groups.forEach(function(g) {
+                caRemoveDict('Label-ChatOther-' + g + '-' + nm);
+                caRemoveDict('ChatOther-' + g + '-' + nm);
+                caRemoveDict('Label-ChatSelf-' + g + '-' + nm);
+                caRemoveDict('ChatSelf-' + g + '-' + nm);
+            });
         } catch (e) {}
     }
 
@@ -106,7 +116,7 @@
             // 隐藏动作：从 BC 注册表移除，避免出现在动作面板和原生动作列表
             if (act.visible === false) { caUnregister(act); return false; }
             var fam = (Player && Player.AssetFamily) || 'Female3DCG';
-            var acts = AssetAllActivities(fam);
+            var acts = caRawAllActivities(fam);
             if (!Array.isArray(acts)) return false;
             var actName = caActivityName(act);
             // 避免重复注册
@@ -127,7 +137,7 @@
     function caUnregister(act) {
         try {
             var fam = (Player && Player.AssetFamily) || 'Female3DCG';
-            var acts = AssetAllActivities(fam);
+            var acts = caRawAllActivities(fam);
             if (!Array.isArray(acts)) return;
             var nm = caActivityName(act);
             for (var i = acts.length - 1; i >= 0; i--) {
@@ -187,6 +197,11 @@
         // 同步 echo 屏蔽集合，并立即清理已存在的 echo 原始重复动作
         rebuildEchoSuppressed();
         caRemoveSuppressedEchoActivities();
+        // 兜底：部分 mod（如 echo/回声）可能在更晚的时机才把动作注册进全局数组，
+        // 这里延迟重新扫描并物理移除一次，确保启动后不残留 echo 原始重复动作。
+        setTimeout(function() {
+            try { rebuildEchoSuppressed(); caRemoveSuppressedEchoActivities(); } catch (e) {}
+        }, 2000);
     }
     function saveCustomActions() { persist(S_CUSTOM, state.customActions); }
     function getCustom(id) {
@@ -376,7 +391,7 @@
         var names = new Set();
         try {
             var fam = (Player && Player.AssetFamily) || 'Female3DCG';
-            var acts = AssetAllActivities(fam);
+            var acts = caRawAllActivities(fam);
             if (!Array.isArray(acts)) return names;
             var candidates = [item.Name, dataKey].filter(function(n) { return typeof n === 'string' && n; });
             var ourPrefix = CA_PREFIX;
@@ -404,13 +419,116 @@
         } catch (e) { console.warn('[XSAct-QA] 扫描 echo 原始动作名失败:', e.message); }
         return names;
     }
+    /** 读取 BC 原生活动数组（绕过本插件对 AssetAllActivities 的 hook，拿到未过滤的原始数组）。
+     *  本插件内部需要枚举/改写活动注册表时（注册自定义动作、扫描 echo 原始名、物理移除屏蔽项）
+     *  必须使用此函数，否则会读到被 hook 过滤后的副本，导致 push/splice 落到临时数组上、注册失效。
+     *  注意：本 BC 版本 AssetAllActivities 仅在 family==='Female3DCG' 时返回全局 ActivityFemale3DCG。 */
+    function caRawAllActivities(fam) {
+        try {
+            if (typeof ActivityFemale3DCG !== 'undefined' && Array.isArray(ActivityFemale3DCG)) return ActivityFemale3DCG;
+        } catch (e) {}
+        try { if (typeof AssetAllActivities === 'function') return AssetAllActivities(fam || 'Female3DCG'); } catch (e) {}
+        return [];
+    }
+    /**
+     * 物理移除 echo 端已导入的同名原始 Activity（精确匹配 echoSuppressed 集合中的名字）。
+     * 与旧实现不同：仅按「精确名 + 安全中文前缀」匹配移除，绝不按宽前缀批量 splice，
+     * 因此不会误伤 BC 原版 / LSCG / Liko / 小酥 等正常动作。
+     * 配合 ActivityAllowedForGroup hook（显示期过滤）与 AssetAllActivities hook（枚举期过滤）三重兜底，
+     * 彻底解决 echo 原始动作在面板/原生列表里漏网、以及使用后英文乱码的问题。
+     */
     function caRemoveSuppressedEchoActivities() {
-        // 重要：不再物理改写 BC 全局活动数组（AssetAllActivities / ActivityFemale3DCGOrdering）。
-        // 旧实现用前缀匹配直接 splice 全局数组，前缀一旦过宽会把大量正常动作从 BC 注册表删除，
-        // 导致 BC 原生动作菜单与插件面板“动作显示混乱”。
-        // 屏蔽改为纯内存过滤：ActivityAllowedForGroup hook（L4264）+ getActionsForPart（L428）
-        // 双重兜底，不触碰全局状态，安全且无副作用。此处保留空函数以兼容既有调用点。
-        return;
+        try {
+            if (!state.echoSuppressed || state.echoSuppressed.size === 0) return;
+            var acts = caRawAllActivities((Player && Player.AssetFamily) || 'Female3DCG');
+            if (Array.isArray(acts)) {
+                for (var i = acts.length - 1; i >= 0; i--) {
+                    var nm = acts[i] && acts[i].Name;
+                    if (nm && caIsEchoSuppressed(nm)) acts.splice(i, 1);
+                }
+            }
+            if (Array.isArray(ActivityFemale3DCGOrdering)) {
+                for (var j = ActivityFemale3DCGOrdering.length - 1; j >= 0; j--) {
+                    if (caIsEchoSuppressed(ActivityFemale3DCGOrdering[j])) ActivityFemale3DCGOrdering.splice(j, 1);
+                }
+            }
+        } catch (e) { console.warn('[XSAct-QA] 物理移除 echo 原始动作失败（已忽略）:', e.message); }
+    }
+    /** 迁移完成后清理原 echo/回声 中的「动作数据」。
+     *  仅清空其 ExtensionSettings[ECHO]['动作数据']（不动 echo 其他配置），
+     *  并刷新屏蔽集合（持续隐藏任何残留 echo 活动名）。数据由 BC 持久化保存。 */
+    function caCleanupEchoData() {
+        try {
+            var ext = Player && Player.ExtensionSettings;
+            var echoKey = ext && Object.keys(ext).find(function(k) { return k.indexOf('ECHO') === 0; });
+            if (!echoKey || !ext[echoKey]) { toast('未找到 echo 数据', '#FF5C5C'); return; }
+            var echoObj = ext[echoKey];
+            var data = echoObj['动作数据'];
+            var before = (data && typeof data === 'object') ? Object.keys(data).length : 0;
+
+            // 关键：在清空 echo 数据前，先把 echo 原始数据中所有能定位到的真实 Activity Name
+            // （如 笨蛋笨Luzi_xxx）锁定进屏蔽集合。清空 echoData 后，rebuildEchoSuppressed
+            // 就无法再从 echoData 反查真实注册名，会导致物理移除漏网。
+            if (data && typeof data === 'object') {
+                Object.keys(data).forEach(function(k) {
+                    var item = data[k];
+                    if (!item) return;
+                    state.echoSuppressed.add(k);
+                    if (item.Name) {
+                        state.echoSuppressed.add(item.Name);
+                        var resolved = caResolveEchoNames(k, item.Name);
+                        state.echoSuppressed.add(resolved.displayName);
+                        state.echoSuppressed.add(resolved.rawName);
+                    }
+                    // 按 item 自身 target 扫描注册表，把真实 Activity Name 也加进屏蔽
+                    var targets = [];
+                    if (item.Target) {
+                        if (Array.isArray(item.Target)) targets = targets.concat(item.Target);
+                        else targets.push(item.Target);
+                    }
+                    if (item.TargetSelf) {
+                        if (Array.isArray(item.TargetSelf)) targets = targets.concat(item.TargetSelf);
+                        else targets.push(item.TargetSelf);
+                    }
+                    var group = targets[0] || (state.customActions.find(function(a) {
+                        return a.name === k || a.name === (item && item.Name) || a.echoName === k || a.echoName === (item && item.Name);
+                    }) || {}).group;
+                    var found = caFindEchoNamesInRegistry(item, k, group);
+                    found.forEach(function(n) { state.echoSuppressed.add(n); });
+                });
+                saveEchoSuppressed();
+            }
+            // 先物理移除一次当前已注册的 echo 原始动作
+            caRemoveSuppressedEchoActivities();
+
+            // 清空 echo 扩展设置中的动作数据
+            echoObj['动作数据'] = {};
+
+            // 持久化回 BC（优先专用 API，回退到整账户保存）
+            try {
+                if (typeof PreferenceSetExtensionSettings === 'function') {
+                    PreferenceSetExtensionSettings(echoKey, echoObj);
+                } else if (typeof ServerAccountUpdate === 'function') {
+                    ServerAccountUpdate();
+                } else if (ServerAccountUpdate && typeof ServerAccountUpdate.QueueData === 'function' && typeof ServerAccountUpdate.SyncToServer === 'function') {
+                    // 部分 BC 版本中 ServerAccountUpdate 为 AccountUpdater 实例（非函数），
+                    // 需手动 QueueData + SyncToServer 才能把 ExtensionSettings 落库。
+                    ServerAccountUpdate.QueueData('ExtensionSettings', Player.ExtensionSettings);
+                    ServerAccountUpdate.SyncToServer();
+                }
+            } catch (e) { console.warn('[XSAct-QA] 持久化 echo 设置失败（已忽略）:', e && e.message); }
+
+            // 清空 echoData 后再次重建屏蔽集合并移除残留；延迟再扫一次防止 echo 异步回写
+            rebuildEchoSuppressed();
+            caRemoveSuppressedEchoActivities();
+            setTimeout(function() {
+                try { rebuildEchoSuppressed(); caRemoveSuppressedEchoActivities(); }
+                catch (e) { console.warn('[XSAct-QA] 延迟清理 echo 残留失败（已忽略）:', e && e.message); }
+            }, 1200);
+
+            toast('已清理原 echo 数据（' + before + ' 项）', '#46E0A0');
+            updateCustomActionPanel(state.selectedTarget);
+        } catch (e) { toast('清理失败：' + e.message, '#FF5C5C'); }
     }
     function caNewId() { return 'ca_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 7); }
 

@@ -2,7 +2,7 @@
 // @name         快捷互动 (QuickInteraction)
 // @name:zh      快捷互动
 // @namespace    https://github.com/heitaoplay/QuickInteraction
-// @version      1.1.4
+// @version      1.1.5
 // @description  Bondage Club - 统一动作操作台。一键进入动作模式，在聊天室场景内直接点人物部位选动作，绕过原生5步嵌套菜单。
 // @author       Tao MUSE
 // @homepageURL  https://github.com/heitaoplay/QuickInteraction
@@ -61,7 +61,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         if (!_serverSyncWarned) { _serverSyncWarned = true; toast('设置同步到服务器失败，已保留在本地', '#FF5C5C'); }
     }
 
-    const VERSION = '1.1.4';
+    const VERSION = '1.1.5';
 
     // ── 存储键 ──
     const S_ENABLED = 'xsact_qa_enabled';
@@ -1189,19 +1189,29 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             // 始终注册 Self 与 Other 两套 Label/Chat，避免原生活动面板在任意上下文显示 MISSING。
             // 自定义动作实际走我们自己的发包逻辑（Type:'Chat'），Chat 句子极少被原生路径使用，
             // 此处仅为补全字典、杜绝 MISSING 文本。
-            caSetDict('Label-ChatOther-' + group + '-' + nm, label);
-            caSetDict('ChatOther-' + group + '-' + nm, dialogOther);
-            caSetDict('Label-ChatSelf-' + group + '-' + nm, label);
-            caSetDict('ChatSelf-' + group + '-' + nm, dialogSelf);
+            // 子部位（如 ItemMouth2）额外在主部位（ItemMouth）注册一份，
+            // 避免 BC 原生面板以主部位为 key 查询时显示 XSQAct_ 内部 ID。
+            var groups = [group];
+            if (typeof SUBPART_TO_BASE !== 'undefined' && SUBPART_TO_BASE[group]) groups.push(SUBPART_TO_BASE[group]);
+            groups.forEach(function(g) {
+                caSetDict('Label-ChatOther-' + g + '-' + nm, label);
+                caSetDict('ChatOther-' + g + '-' + nm, dialogOther);
+                caSetDict('Label-ChatSelf-' + g + '-' + nm, label);
+                caSetDict('ChatSelf-' + g + '-' + nm, dialogSelf);
+            });
         } catch (e) { console.warn('[XSAct-QA] 注册自定义动作字典失败:', e.message); }
     }
     function caUnregisterDictionary(act, nm) {
         try {
             var group = act.group || 'ItemMouth';
-            caRemoveDict('Label-ChatOther-' + group + '-' + nm);
-            caRemoveDict('ChatOther-' + group + '-' + nm);
-            caRemoveDict('Label-ChatSelf-' + group + '-' + nm);
-            caRemoveDict('ChatSelf-' + group + '-' + nm);
+            var groups = [group];
+            if (typeof SUBPART_TO_BASE !== 'undefined' && SUBPART_TO_BASE[group]) groups.push(SUBPART_TO_BASE[group]);
+            groups.forEach(function(g) {
+                caRemoveDict('Label-ChatOther-' + g + '-' + nm);
+                caRemoveDict('ChatOther-' + g + '-' + nm);
+                caRemoveDict('Label-ChatSelf-' + g + '-' + nm);
+                caRemoveDict('ChatSelf-' + g + '-' + nm);
+            });
         } catch (e) {}
     }
 
@@ -1212,7 +1222,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             // 隐藏动作：从 BC 注册表移除，避免出现在动作面板和原生动作列表
             if (act.visible === false) { caUnregister(act); return false; }
             var fam = (Player && Player.AssetFamily) || 'Female3DCG';
-            var acts = AssetAllActivities(fam);
+            var acts = caRawAllActivities(fam);
             if (!Array.isArray(acts)) return false;
             var actName = caActivityName(act);
             // 避免重复注册
@@ -1233,7 +1243,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
     function caUnregister(act) {
         try {
             var fam = (Player && Player.AssetFamily) || 'Female3DCG';
-            var acts = AssetAllActivities(fam);
+            var acts = caRawAllActivities(fam);
             if (!Array.isArray(acts)) return;
             var nm = caActivityName(act);
             for (var i = acts.length - 1; i >= 0; i--) {
@@ -1293,6 +1303,11 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         // 同步 echo 屏蔽集合，并立即清理已存在的 echo 原始重复动作
         rebuildEchoSuppressed();
         caRemoveSuppressedEchoActivities();
+        // 兜底：部分 mod（如 echo/回声）可能在更晚的时机才把动作注册进全局数组，
+        // 这里延迟重新扫描并物理移除一次，确保启动后不残留 echo 原始重复动作。
+        setTimeout(function() {
+            try { rebuildEchoSuppressed(); caRemoveSuppressedEchoActivities(); } catch (e) {}
+        }, 2000);
     }
     function saveCustomActions() { persist(S_CUSTOM, state.customActions); }
     function getCustom(id) {
@@ -1482,7 +1497,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         var names = new Set();
         try {
             var fam = (Player && Player.AssetFamily) || 'Female3DCG';
-            var acts = AssetAllActivities(fam);
+            var acts = caRawAllActivities(fam);
             if (!Array.isArray(acts)) return names;
             var candidates = [item.Name, dataKey].filter(function(n) { return typeof n === 'string' && n; });
             var ourPrefix = CA_PREFIX;
@@ -1510,13 +1525,116 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         } catch (e) { console.warn('[XSAct-QA] 扫描 echo 原始动作名失败:', e.message); }
         return names;
     }
+    /** 读取 BC 原生活动数组（绕过本插件对 AssetAllActivities 的 hook，拿到未过滤的原始数组）。
+     *  本插件内部需要枚举/改写活动注册表时（注册自定义动作、扫描 echo 原始名、物理移除屏蔽项）
+     *  必须使用此函数，否则会读到被 hook 过滤后的副本，导致 push/splice 落到临时数组上、注册失效。
+     *  注意：本 BC 版本 AssetAllActivities 仅在 family==='Female3DCG' 时返回全局 ActivityFemale3DCG。 */
+    function caRawAllActivities(fam) {
+        try {
+            if (typeof ActivityFemale3DCG !== 'undefined' && Array.isArray(ActivityFemale3DCG)) return ActivityFemale3DCG;
+        } catch (e) {}
+        try { if (typeof AssetAllActivities === 'function') return AssetAllActivities(fam || 'Female3DCG'); } catch (e) {}
+        return [];
+    }
+    /**
+     * 物理移除 echo 端已导入的同名原始 Activity（精确匹配 echoSuppressed 集合中的名字）。
+     * 与旧实现不同：仅按「精确名 + 安全中文前缀」匹配移除，绝不按宽前缀批量 splice，
+     * 因此不会误伤 BC 原版 / LSCG / Liko / 小酥 等正常动作。
+     * 配合 ActivityAllowedForGroup hook（显示期过滤）与 AssetAllActivities hook（枚举期过滤）三重兜底，
+     * 彻底解决 echo 原始动作在面板/原生列表里漏网、以及使用后英文乱码的问题。
+     */
     function caRemoveSuppressedEchoActivities() {
-        // 重要：不再物理改写 BC 全局活动数组（AssetAllActivities / ActivityFemale3DCGOrdering）。
-        // 旧实现用前缀匹配直接 splice 全局数组，前缀一旦过宽会把大量正常动作从 BC 注册表删除，
-        // 导致 BC 原生动作菜单与插件面板“动作显示混乱”。
-        // 屏蔽改为纯内存过滤：ActivityAllowedForGroup hook（L4264）+ getActionsForPart（L428）
-        // 双重兜底，不触碰全局状态，安全且无副作用。此处保留空函数以兼容既有调用点。
-        return;
+        try {
+            if (!state.echoSuppressed || state.echoSuppressed.size === 0) return;
+            var acts = caRawAllActivities((Player && Player.AssetFamily) || 'Female3DCG');
+            if (Array.isArray(acts)) {
+                for (var i = acts.length - 1; i >= 0; i--) {
+                    var nm = acts[i] && acts[i].Name;
+                    if (nm && caIsEchoSuppressed(nm)) acts.splice(i, 1);
+                }
+            }
+            if (Array.isArray(ActivityFemale3DCGOrdering)) {
+                for (var j = ActivityFemale3DCGOrdering.length - 1; j >= 0; j--) {
+                    if (caIsEchoSuppressed(ActivityFemale3DCGOrdering[j])) ActivityFemale3DCGOrdering.splice(j, 1);
+                }
+            }
+        } catch (e) { console.warn('[XSAct-QA] 物理移除 echo 原始动作失败（已忽略）:', e.message); }
+    }
+    /** 迁移完成后清理原 echo/回声 中的「动作数据」。
+     *  仅清空其 ExtensionSettings[ECHO]['动作数据']（不动 echo 其他配置），
+     *  并刷新屏蔽集合（持续隐藏任何残留 echo 活动名）。数据由 BC 持久化保存。 */
+    function caCleanupEchoData() {
+        try {
+            var ext = Player && Player.ExtensionSettings;
+            var echoKey = ext && Object.keys(ext).find(function(k) { return k.indexOf('ECHO') === 0; });
+            if (!echoKey || !ext[echoKey]) { toast('未找到 echo 数据', '#FF5C5C'); return; }
+            var echoObj = ext[echoKey];
+            var data = echoObj['动作数据'];
+            var before = (data && typeof data === 'object') ? Object.keys(data).length : 0;
+
+            // 关键：在清空 echo 数据前，先把 echo 原始数据中所有能定位到的真实 Activity Name
+            // （如 笨蛋笨Luzi_xxx）锁定进屏蔽集合。清空 echoData 后，rebuildEchoSuppressed
+            // 就无法再从 echoData 反查真实注册名，会导致物理移除漏网。
+            if (data && typeof data === 'object') {
+                Object.keys(data).forEach(function(k) {
+                    var item = data[k];
+                    if (!item) return;
+                    state.echoSuppressed.add(k);
+                    if (item.Name) {
+                        state.echoSuppressed.add(item.Name);
+                        var resolved = caResolveEchoNames(k, item.Name);
+                        state.echoSuppressed.add(resolved.displayName);
+                        state.echoSuppressed.add(resolved.rawName);
+                    }
+                    // 按 item 自身 target 扫描注册表，把真实 Activity Name 也加进屏蔽
+                    var targets = [];
+                    if (item.Target) {
+                        if (Array.isArray(item.Target)) targets = targets.concat(item.Target);
+                        else targets.push(item.Target);
+                    }
+                    if (item.TargetSelf) {
+                        if (Array.isArray(item.TargetSelf)) targets = targets.concat(item.TargetSelf);
+                        else targets.push(item.TargetSelf);
+                    }
+                    var group = targets[0] || (state.customActions.find(function(a) {
+                        return a.name === k || a.name === (item && item.Name) || a.echoName === k || a.echoName === (item && item.Name);
+                    }) || {}).group;
+                    var found = caFindEchoNamesInRegistry(item, k, group);
+                    found.forEach(function(n) { state.echoSuppressed.add(n); });
+                });
+                saveEchoSuppressed();
+            }
+            // 先物理移除一次当前已注册的 echo 原始动作
+            caRemoveSuppressedEchoActivities();
+
+            // 清空 echo 扩展设置中的动作数据
+            echoObj['动作数据'] = {};
+
+            // 持久化回 BC（优先专用 API，回退到整账户保存）
+            try {
+                if (typeof PreferenceSetExtensionSettings === 'function') {
+                    PreferenceSetExtensionSettings(echoKey, echoObj);
+                } else if (typeof ServerAccountUpdate === 'function') {
+                    ServerAccountUpdate();
+                } else if (ServerAccountUpdate && typeof ServerAccountUpdate.QueueData === 'function' && typeof ServerAccountUpdate.SyncToServer === 'function') {
+                    // 部分 BC 版本中 ServerAccountUpdate 为 AccountUpdater 实例（非函数），
+                    // 需手动 QueueData + SyncToServer 才能把 ExtensionSettings 落库。
+                    ServerAccountUpdate.QueueData('ExtensionSettings', Player.ExtensionSettings);
+                    ServerAccountUpdate.SyncToServer();
+                }
+            } catch (e) { console.warn('[XSAct-QA] 持久化 echo 设置失败（已忽略）:', e && e.message); }
+
+            // 清空 echoData 后再次重建屏蔽集合并移除残留；延迟再扫一次防止 echo 异步回写
+            rebuildEchoSuppressed();
+            caRemoveSuppressedEchoActivities();
+            setTimeout(function() {
+                try { rebuildEchoSuppressed(); caRemoveSuppressedEchoActivities(); }
+                catch (e) { console.warn('[XSAct-QA] 延迟清理 echo 残留失败（已忽略）:', e && e.message); }
+            }, 1200);
+
+            toast('已清理原 echo 数据（' + before + ' 项）', '#46E0A0');
+            updateCustomActionPanel(state.selectedTarget);
+        } catch (e) { toast('清理失败：' + e.message, '#FF5C5C'); }
     }
     function caNewId() { return 'ca_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 7); }
 
@@ -1578,6 +1696,18 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         }
 
         html += '<div class="xsact-ca-beta">自定义动作功能当前为【测试版(Beta)】，仍在开发中，可能存在不稳定或未完善之处，建议谨慎使用并及时反馈问题。</div>';
+
+        // 迁移提示：原 echo/回声 中仍有动作数据 → 提供一键清理入口
+        try {
+            var _echoData = caGetEchoData();
+            var _hasEchoSrc = state.customActions.some(function(a) { return a.source === 'echo'; });
+            if (_echoData && Object.keys(_echoData).length && _hasEchoSrc) {
+                html += '<div class="xsact-ca-echo-clean" id="xsact-ca-echo-clean">' +
+                    '<div class="xsact-ca-echo-clean-text">检测到原 echo/回声 中仍有 <b>' + Object.keys(_echoData).length + '</b> 个自定义动作数据。迁移完成后建议清理，避免动作重复显示与使用后乱码。</div>' +
+                    '<button class="xsact-ca-echo-clean-btn" id="xsact-ca-echo-clean-btn" type="button">清理原 echo 数据</button>' +
+                '</div>';
+            }
+        } catch (e) {}
 
         if (!acts.length) {
             html += '<div class="xsact-qa-empty xsact-ca-empty">还没有自定义动作。点「新建」创建，或点「导入」从 echo/回声 迁移。</div>';
@@ -1668,6 +1798,13 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         });
         var exportBtn = listEl.querySelector('#xsact-ca-export');
         if (exportBtn) exportBtn.addEventListener('click', exportCustomActions);
+        var echoCleanBtn = listEl.querySelector('#xsact-ca-echo-clean-btn');
+        if (echoCleanBtn) echoCleanBtn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            if (confirm('确定清理原 echo/回声 中的自定义动作数据吗？\n仅删除其「动作数据」，不影响本插件与其他配置（清理后系统更稳定）。')) {
+                caCleanupEchoData();
+            }
+        });
         var searchInput = listEl.querySelector('#xsact-ca-search');
         if (searchInput) searchInput.addEventListener('input', function() {
             var q = searchInput.value.trim().toLowerCase();
@@ -2312,7 +2449,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         //   旧前缀与其冲突导致原生动作界面崩溃，升级后必须清除。）
         try {
             var fam = (Player && Player.AssetFamily) || 'Female3DCG';
-            var acts = AssetAllActivities(fam);
+            var acts = caRawAllActivities(fam);
             var validNames = new Set();
             state.customActions.forEach(function(a) { validNames.add(caActivityName(a)); });
             var OLD_PREFIXES = ['XSAct_CA_', CA_PREFIX];
@@ -4198,6 +4335,12 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
 
             '.xsact-ca-beta{font-size:11px;line-height:1.55;color:var(--xs-accent-text);background:rgba(var(--xs-accent-rgb),0.10);border:1px solid rgba(var(--xs-accent-rgb),0.30);border-left:3px solid var(--xs-accent);border-radius:8px;padding:10px 12px;}',
 
+            '.xsact-ca-echo-clean{display:flex;align-items:center;gap:12px;flex-wrap:wrap;font-size:11px;line-height:1.5;color:var(--xs-text);background:rgba(255,92,122,0.08);border:1px solid rgba(255,92,122,0.32);border-left:3px solid #FF5C7A;border-radius:8px;padding:10px 12px;margin-top:2px;}',
+            '.xsact-ca-echo-clean-text{flex:1;min-width:160px;color:var(--xs-text-dim);}',
+            '.xsact-ca-echo-clean-text b{color:#FF8FA6;font-weight:700;}',
+            '.xsact-ca-echo-clean-btn{flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;padding:7px 14px;border-radius:8px;border:1px solid rgba(255,92,122,0.5);background:rgba(255,92,122,0.16);color:#FFB3C6;font-size:12px;font-weight:600;cursor:pointer;transition:background .15s,border-color .15s,color .15s;}',
+            '.xsact-ca-echo-clean-btn:hover{background:rgba(255,92,122,0.28);border-color:#FF5C7A;color:#FFFFFF;}',
+
             '.xsact-ca-list{display:flex;flex-direction:column;gap:10px;width:100%;}',
             '.xsact-ca-card{display:grid;grid-template-columns:1fr auto;align-items:center;gap:10px;padding:12px 14px;border-radius:10px;background:var(--xs-card-bg);border:1px solid var(--xs-border);transition:border-color .15s,background .15s,transform .1s;min-width:0;}',
             '.xsact-ca-card:hover{border-color:var(--xs-border-strong);background:var(--xs-hover);transform:translateY(-1px);}',
@@ -4716,6 +4859,14 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
     // ─────────────────────────────────────────────────────────────────────────
 
 
+    // ── 原生动作按钮上的自定义动作图标（与插件视觉一致：玫红强调色 + 白色闪电）──
+    var XSACT_ACTIVITY_ICON = 'data:image/svg+xml;utf8,' + encodeURIComponent(
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">' +
+        '<rect x="2" y="2" width="20" height="20" rx="5" fill="#FF5C7A"/>' +
+        '<path d="M13 6l-5 7h4l-1 5 6-8h-4z" fill="#ffffff"/>' +
+        '</svg>'
+    );
+
     function initTooltip() {
         if (window.__xsactTooltipReady) return;
         window.__xsactTooltipReady = true;
@@ -4838,6 +4989,23 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             console.warn('[XSAct-QA] ActivityAllowedForGroup hook 失败:', e.message);
         }
 
+        // ── Hook: AssetAllActivities —— 枚举期兜底过滤 echo 端已导入的同名原始动作 ──
+        // 仅返回过滤后的「副本」，绝不改写全局数组（caRegister/caUnregister 等内部改写
+        // 代码统一走 caRawAllActivities 读原始数组，因此本 hook 不会影响自定义动作注册）。
+        // 优先级 0：在所有 mod 读取活动列表时即剔除 echo 原始项，覆盖 BC 原生活动面板、
+        // 第三方 mod 枚举等任何直接调用 AssetAllActivities 的路径，解决屏蔽漏网。
+        try {
+            state.modApi.hookFunction('AssetAllActivities', 0, function(args, next) {
+                var result = next(args);
+                if (!state.echoSuppressed || state.echoSuppressed.size === 0 || !Array.isArray(result)) return result;
+                try {
+                    return result.filter(function(a) { return !caIsEchoSuppressed(a && a.Name); });
+                } catch (e) { return result; }
+            });
+        } catch (e) {
+            console.warn('[XSAct-QA] AssetAllActivities hook 失败:', e.message);
+        }
+
         // DrawCharacter(Character, X, Y, Zoom, ...) 的 X/Y/Zoom 是角色最终画上去的位置，
         // 含 ECHO 贴贴等活动的 X 位移，比 ChatRoomCharacterViewLoopCharacters 更准。
         // 这是线框能精确贴合人物模型的关键。
@@ -4946,6 +5114,64 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             }
             return next(args);
         });
+
+        // ── Hook: ActivityRun（优先级 -100，先于记录 hook 拦截）──
+        // 原生动作界面点击我们的自定义动作时，BC 原生 ActivityRun 会按「当前菜单部位组」
+        // 与「acted 是否为玩家」拼出 ChatSelf/ChatOther-<group>-<XSQAct_xxx> 再发送，
+        // 这与我们的字典注册组 / self-other 选择可能不一致（例如自我动作点到他人身上会变成
+        // ChatOther = 无占位符的纯标签），导致接收端 MISSING TEXT 或「人物名称占位符」未被替换。
+        // 这里拦截：本地副作用仍交给 BC（sendMessage=false），消息改走与插件 UI 完全一致的
+        // makeActivityPacket，保证原生界面与插件界面行为一致、跨客户端可读。
+        try {
+            state.modApi.hookFunction('ActivityRun', -100, function(args, next) {
+                try {
+                    var _item = args[3] || {};
+                    var _name = (_item.Activity && _item.Activity.Name) || '';
+                    var _send = args[4];
+                    if (_send !== false && typeof _name === 'string' && _name.indexOf(CA_PREFIX) === 0) {
+                        var _ca = caFindByActivityName(_name);
+                        if (_ca) {
+                            var _acted = args[1];
+                            try { args[4] = false; next(args); }
+                            catch (e) { console.warn('[XSAct-QA] 原生点击本地副作用失败:', e.message); }
+                            var _packet = makeActivityPacket(_acted, _ca.group, _name, _item.Item || null);
+                            if (_packet) {
+                                var _prev = _acted ? _acted.FocusGroup : undefined;
+                                var _fg = (typeof AssetGroup !== 'undefined' && Array.isArray(AssetGroup))
+                                    ? AssetGroup.find(function(g) { return g && g.Name === _ca.group; }) : null;
+                                try {
+                                    if (_acted) _acted.FocusGroup = _fg || { Name: _ca.group };
+                                    if (typeof ServerSend === 'function') ServerSend('ChatRoomChat', _packet);
+                                } finally { if (_acted) _acted.FocusGroup = _prev; }
+                            }
+                            return; // 已自行发包，阻断 BC 默认 Activity 包
+                        }
+                    }
+                } catch (e) { console.warn('[XSAct-QA] 原生点击拦截异常，回退 BC 默认:', e.message); }
+                return next(args);
+            });
+        } catch (e) {
+            console.warn('[XSAct-QA] ActivityRun 原生点击拦截 hook 失败:', e.message);
+        }
+
+        // ── Hook: ElementButton.CreateForActivity —— 为自定义动作按钮注入图标 ──
+        // BC 的 Activity 对象无 Image/Icon 字段，原生按钮会尝试加载
+        // ./Assets/Female3DCG/Activity/<XSQAct_xxx>.png（该文件不存在 → 破图/无图）。
+        // 这里把按钮主图覆盖为插件品牌图标（玫红方块 + 白色闪电 data URL），
+        // 使自定义动作在原生动作界面也能显示辨识图标，且不会出现破图。
+        try {
+            state.modApi.hookFunction('ElementButton.CreateForActivity', 0, function(args, next) {
+                var _ia = args[1] || {};
+                var _n = (_ia.Activity && _ia.Activity.Name) || '';
+                if (typeof _n === 'string' && _n.indexOf(CA_PREFIX) === 0) {
+                    if (!args[4] || typeof args[4] !== 'object') args[4] = {};
+                    args[4].image = XSACT_ACTIVITY_ICON;
+                }
+                return next(args);
+            });
+        } catch (e) {
+            console.warn('[XSAct-QA] ElementButton 图标 hook 失败:', e.message);
+        }
 
         // 将定时器控制绑定到 enter/exit
         var _baseEnter = enterActionMode;
@@ -5255,10 +5481,12 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             // ── 自定义动作 / echo 屏蔽调试 ──
             state: state,
             getCustomActions: function() { return state.customActions.slice(); },
+            getEchoData: caGetEchoData,
             getEchoSuppressed: function() { return Array.from(state.echoSuppressed); },
             importFromEcho: importCustomFromEcho,
             rebuildEchoSuppressed: rebuildEchoSuppressed,
             removeSuppressedEchoActivities: caRemoveSuppressedEchoActivities,
+            cleanupEchoData: caCleanupEchoData,
             upsertCustom: upsertCustom,
             deleteCustom: deleteCustom,
             caHash: caHash,
