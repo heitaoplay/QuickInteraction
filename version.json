@@ -2,7 +2,7 @@
   "version": "1.3.0",
   "date": "2026-07-22",
   "summary": "新增「内置小酥动作包」：把 XiaoSuActivity（小酥动作拓展）全部 51 个动作预编译进 QiAct 内部，离线可用、无需安装原版插件、对原版停更/Web Worker 故障完全免疫。「我的动作」面板提供一键开关，默认开启，关闭后从列表与 BC 原生菜单中彻底移除。开关只在「小酥」分类 chip 下显示，其他分类（全部/我的/echo）下隐藏，避免视觉干扰。\n同时取消之前的「从小酥克隆」和「拓展动作导入」相关功能与界面。\n\n新增「我的动作」分类 chip 过滤栏：在「我的动作」顶部工具栏下方增加「全部 / 小酥 / 我的 / echo」4 个分类按钮，一键按来源过滤动作列表（编辑模式同样可用），每个按钮显示该分类的实时数量。空分类自动置灰且不可点。chip 选择会跨刷新持久化。\n\n「小酥」动作的来源徽章改为玫红色（之前是 QiAct 紫色），与「我的」（紫）/「echo」（黄）来源一眼可辨。",
-  "detailsUrl": "https://github.com/heitaoplay/QuickInteraction/releases/tag/v1.3.0",
+  "detailsUrl": "https://github.com/bondage-studio/QuickInteraction/releases/tag/v1.3.0",
   "announcement": {
     "id": "2026-07-22-xiaosu-pack-v1.3.0",
     "title": "QiAct v1.3.0 内置小酥动作包 + 分类筛选",

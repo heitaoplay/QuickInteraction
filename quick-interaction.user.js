@@ -1,13 +1,13 @@
 // ==UserScript==
 // @name         快捷互动 (QiAct)
 // @name:zh      快捷互动
-// @namespace    https://github.com/heitaoplay/QuickInteraction
+// @namespace    https://github.com/bondage-studio/QuickInteraction
 // @version      1.3.0
 // @description  Bondage Club - 统一动作操作台。一键进入动作模式，在聊天室场景内直接点人物部位选动作，绕过原生5步嵌套菜单。
 // @author       Tao MUSE
-// @homepageURL  https://github.com/heitaoplay/QuickInteraction
-// @updateURL    https://github.com/heitaoplay/QuickInteraction/raw/main/quick-interaction.user.js
-// @downloadURL  https://github.com/heitaoplay/QuickInteraction/raw/main/quick-interaction.user.js
+// @homepageURL  https://github.com/bondage-studio/QuickInteraction
+// @updateURL    https://github.com/bondage-studio/QuickInteraction/raw/main/quick-interaction.user.js
+// @downloadURL  https://github.com/bondage-studio/QuickInteraction/raw/main/quick-interaction.user.js
 // @include      /^https:\/\/(www\.)?bondage(projects\.elementfx|-(europe|asia))\.com\/.*/
 // @grant        none
 // @run-at       document-end
