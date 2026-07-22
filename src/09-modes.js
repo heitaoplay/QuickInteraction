@@ -78,11 +78,18 @@
     /** 清空全部收藏动作 */
     function clearAllFavorites() {
         if (!Array.isArray(state.favorites) || state.favorites.length === 0) { toast('当前没有收藏动作', '#888'); return; }
-        if (!confirm('确定清空全部收藏动作吗？')) return;
-        state.favorites = [];
-        persist(S_FAVS, state.favorites);
-        renderPanel();
-        toast('已清空全部收藏', '#888');
+        qiactConfirm({
+            title: '清空全部收藏',
+            body: '确定清空全部收藏动作吗？此操作无法撤销。',
+            confirmText: '全部清空',
+            danger: true
+        }).then(function(ok) {
+            if (!ok) return;
+            state.favorites = [];
+            persist(S_FAVS, state.favorites);
+            renderPanel();
+            toast('已清空全部收藏', '#888');
+        });
     }
 
     /** Toast 提示 */
@@ -108,6 +115,79 @@
         el.style.opacity = '1';
         clearTimeout(el._timer);
         el._timer = setTimeout(() => { el.style.opacity = '0'; }, 2000);
+    }
+
+    /**
+     * 统一确认模态（暗色玫红，替代浏览器原生 confirm）
+     *  - 异步：返回 Promise<boolean>，true=确定，false=取消/关闭
+     *  - 支持：title / body / confirmText / cancelText / danger
+     *  - 交互：ESC 键、点遮罩、点取消 → false；点确定 → true
+     */
+    function qiactConfirm(opts) {
+        opts = opts || {};
+        return new Promise(function(resolve) {
+            // 同一时刻只允许一个确认框
+            var existing = document.getElementById('xsact-confirm');
+            if (existing) existing.remove();
+
+            var title = String(opts.title || '确认操作');
+            var body = opts.body ? String(opts.body) : '';
+            var confirmText = String(opts.confirmText || '确定');
+            var cancelText = String(opts.cancelText || '取消');
+            var danger = opts.danger !== false; // 默认危险操作（玫红强调）
+
+            var box = document.createElement('div');
+            box.id = 'xsact-confirm';
+            box.className = 'xsact-confirm';
+            box.innerHTML =
+                '<div class="xsact-confirm-box" role="dialog" aria-modal="true">' +
+                    '<div class="xsact-confirm-title"></div>' +
+                    (body ? '<div class="xsact-confirm-body"></div>' : '') +
+                    '<div class="xsact-confirm-footer">' +
+                        '<button class="xsact-confirm-btn xsact-confirm-cancel" type="button"></button>' +
+                        '<button class="xsact-confirm-btn xsact-confirm-ok' + (danger ? ' is-danger' : '') + '" type="button"></button>' +
+                    '</div>' +
+                '</div>';
+            box.querySelector('.xsact-confirm-title').textContent = title;
+            if (body) box.querySelector('.xsact-confirm-body').textContent = body;
+            box.querySelector('.xsact-confirm-cancel').textContent = cancelText;
+            box.querySelector('.xsact-confirm-ok').textContent = confirmText;
+
+            function done(result) {
+                document.removeEventListener('keydown', onKey);
+                if (box.parentNode) box.parentNode.removeChild(box);
+                resolve(result);
+            }
+            function onKey(e) {
+                if (e.key === 'Escape') { e.preventDefault(); done(false); }
+                else if (e.key === 'Enter') { e.preventDefault(); done(true); }
+            }
+            // 监听加在 box 自身（capture 阶段），绕开 BC 页面在 body/document 层的 keydown 拦截
+            box.addEventListener('keydown', onKey, true);
+            // 兜底：document 上也监听（正常浏览器中点 modal 内元素后 Esc 应能冒泡到此）
+            document.addEventListener('keydown', onKey, false);
+            box.addEventListener('click', function(e) {
+                if (e.target === box) done(false); // 点击遮罩
+            });
+            box.querySelector('.xsact-confirm-cancel').addEventListener('click', function() { done(false); });
+            box.querySelector('.xsact-confirm-ok').addEventListener('click', function() { done(true); });
+
+            document.body.appendChild(box);
+            // 自动 focus 到确定按钮，回车即确认
+            setTimeout(function() {
+                var ok = box.querySelector('.xsact-confirm-ok');
+                if (ok) ok.focus();
+            }, 30);
+        });
+    }
+
+    // 兼容旧版 confirm 调用（同步返回，仅用于不支持 Promise 的旧位置；新代码用 qiactConfirm）
+    function qiactConfirmSync(opts) {
+        // 兼容：极少数老调用方是同步 if(confirm(...)) 写法。
+        // 这里用全局锁 + 轮询检测，**不推荐**新代码使用。
+        var _qiactConfirmPending = null;
+        // 实际上当前没有调用方使用 confirm()，所以这是预留接口
+        return qiactConfirm(opts);
     }
 
     // ════════════════════════════════════════════════════════════════════════

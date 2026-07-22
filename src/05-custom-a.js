@@ -40,7 +40,7 @@
         if (typeof key !== 'string' || !key || value == null) return;
         // 优先走 BCX 兼容的 SDK hook 兜底；幂等，已安装则直接返回。
         if (typeof patchActivityDictionaryText === 'function') {
-            try { patchActivityDictionaryText(); } catch (e) { /* 忽略：兜底 hook 安装失败仍继续写 cache/数组 */ }
+            try { patchActivityDictionaryText(); } catch (e) { silent(e, 'patchActivityDictionaryText'); }
         }
         // 1. R130+ TextCache：必须写入 loader.cache（ActivityDictionaryText 实际读取处）
         try {
@@ -48,7 +48,7 @@
             if (loader && loader.cache && typeof loader.cache === 'object') loader.cache[key] = value;
             else if (loader && typeof loader.set === 'function') loader.set(key, value);
             else if (loader && typeof loader === 'object') loader[key] = value;
-        } catch (e) {}
+        } catch (e) { silent(e, 'caSetDict.cache'); }
         // 2. 全局 ActivityDictionary 数组（兼容旧版 BC，并给 SDK hook 兜底用）
         if (Array.isArray(window.ActivityDictionary)) {
             var found = false;
@@ -72,7 +72,7 @@
             if (loader && loader.cache && typeof loader.cache === 'object') delete loader.cache[key];
             else if (loader && typeof loader.delete === 'function') loader.delete(key);
             else if (loader && typeof loader === 'object') delete loader[key];
-        } catch (e) {}
+        } catch (e) { silent(e, 'caRemoveDict'); }
     }
     function caRegisterDictionary(act, nm) {
         try {
@@ -106,7 +106,7 @@
                 caRemoveDict('Label-ChatSelf-' + g + '-' + nm);
                 caRemoveDict('ChatSelf-' + g + '-' + nm);
             });
-        } catch (e) {}
+        } catch (e) { silent(e, 'caUnregisterDictionary'); }
     }
 
     function caRegister(act) {
@@ -200,7 +200,7 @@
         // 兜底：部分 mod（如 echo/回声）可能在更晚的时机才把动作注册进全局数组，
         // 这里延迟重新扫描并物理移除一次，确保启动后不残留 echo 原始重复动作。
         setTimeout(function() {
-            try { rebuildEchoSuppressed(); caRemoveSuppressedEchoActivities(); } catch (e) {}
+            try { rebuildEchoSuppressed(); caRemoveSuppressedEchoActivities(); } catch (e) { silent(e, 'echoSuppressCleanup'); }
         }, 2000);
     }
     function saveCustomActions() { persist(S_CUSTOM, state.customActions); }
@@ -229,6 +229,11 @@
         if (act.source === 'echo' && act.name && !state.customActions.some(function(a) { return a.name === act.name && a.source === 'echo'; })) {
             state.echoSuppressed.delete(act.name);
             if (act.echoName) state.echoSuppressed.delete(act.echoName);
+            saveEchoSuppressed();
+        }
+        // 若删除的是小酥来源动作，则解除其原版(XSAct_)屏蔽，使其重新可见
+        if (act.source === 'xiaosu' && act.xiaosuName) {
+            state.echoSuppressed.delete(act.xiaosuName);
             saveEchoSuppressed();
         }
         saveCustomActions();
@@ -426,8 +431,8 @@
     function caRawAllActivities(fam) {
         try {
             if (typeof ActivityFemale3DCG !== 'undefined' && Array.isArray(ActivityFemale3DCG)) return ActivityFemale3DCG;
-        } catch (e) {}
-        try { if (typeof AssetAllActivities === 'function') return AssetAllActivities(fam || 'Female3DCG'); } catch (e) {}
+        } catch (e) { silent(e, 'getActivitiesNative'); }
+        try { if (typeof AssetAllActivities === 'function') return AssetAllActivities(fam || 'Female3DCG'); } catch (e) { silent(e, 'getActivitiesAssetAll'); }
         return [];
     }
     /**

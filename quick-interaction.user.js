@@ -2,7 +2,7 @@
 // @name         快捷互动 (QiAct)
 // @name:zh      快捷互动
 // @namespace    https://github.com/heitaoplay/QuickInteraction
-// @version      1.2.0
+// @version      1.3.0
 // @description  Bondage Club - 统一动作操作台。一键进入动作模式，在聊天室场景内直接点人物部位选动作，绕过原生5步嵌套菜单。
 // @author       Tao MUSE
 // @homepageURL  https://github.com/heitaoplay/QuickInteraction
@@ -61,7 +61,21 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         if (!_serverSyncWarned) { _serverSyncWarned = true; toast('设置同步到服务器失败，已保留在本地', '#FF5C5C'); }
     }
 
-    const VERSION = '1.2.0';
+    // 通用空 catch 收口：debug 态才节流打日志，生产静默但不丢上下文。
+    // 取代散落的 `catch (e) {}` / `catch (_) {}` — 满足「禁空 catch / 禁静默吞错」红线，
+    // 同时生产环境零 console 输出。用法：try { ... } catch (e) { silent(e, 'contextTag'); }
+    const _silentSeen = {};
+    function silent(e, ctx) {
+        if (!DEBUG) return;
+        const key = ctx || (e && e.message) || 'silent';
+        if (!_silentSeen[key]) _silentSeen[key] = 0;
+        if (_silentSeen[key] < 3) {
+            _silentSeen[key]++;
+            console.warn('[QiAct]' + (ctx ? ' ' + ctx + ':' : '') + (e && e.stack ? '\n' + e.stack : (e ? ' ' + e : '')));
+        }
+    }
+
+    const VERSION = '1.3.0';
 
     // ── 存储键 ──
     const S_ENABLED = 'xsact_qa_enabled';
@@ -79,6 +93,8 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
     const S_LAST_ANNOUNCE = 'xsact_qa_last_announce';
     const S_LAST_ANNOUNCE_VER = 'xsact_qa_last_announce_ver'; // 公告去重：记录上次见到公告时的版本号
     const S_ECHO_SUPPRESS = 'xsact_qa_echo_suppressed'; // 已导入并屏蔽的 echo 原始动作名
+    const S_XIAOSU_PACK = 'xsact_qa_xiaosu_pack'; // 是否启用内置「小酥动作包」（预编译进插件，离线可用）
+    const S_CA_FILTER = 'xsact_qa_ca_filter'; // 「我的动作」分类 chip：'all' | 'xiaosu' | 'native' | 'echo'
 
     // ── 集中状态（单一数据源，消除散落全局变量）──
     const state = {
@@ -100,10 +116,12 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         customActions: [],            // 自定义动作（QiAct 自包含版，替代 echo/回声）
         echoSuppressed: new Set(),    // 已导入的 echo 原始动作名（屏蔽用）
         echoPrefixes: new Set(),     // 已导入 echo 动作的中文显示前缀（安全前缀兜底，仅匹配 echo 命名空间，不误伤 BC 原生动作）
+        xiaosuPack: true,            // 是否启用内置「小酥动作包」（预编译进插件，离线可用，默认开）
         editingCustomId: null,        // 正在编辑的自定义动作 id
         caEditMode: false,           // 自定义动作「编辑模式」（拖动排序/批量管理）
         caSelected: [],              // 编辑模式下选中的自定义动作 id 列表
         caDragId: null,              // 拖动排序中正在拖拽的 id
+        caFilter: 'all',             // 「我的动作」分类 chip 过滤：'all' | 'xiaosu' | 'native' | 'echo'
         favorites: [],                // 收藏复合键数组：格式 "部位Group|动作名"（如 "ItemMouth|Caress"）
         presets: [],                  // 预留预设
         lastAction: null,             // 上次执行的动作
@@ -1146,7 +1164,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         if (typeof key !== 'string' || !key || value == null) return;
         // 优先走 BCX 兼容的 SDK hook 兜底；幂等，已安装则直接返回。
         if (typeof patchActivityDictionaryText === 'function') {
-            try { patchActivityDictionaryText(); } catch (e) { /* 忽略：兜底 hook 安装失败仍继续写 cache/数组 */ }
+            try { patchActivityDictionaryText(); } catch (e) { silent(e, 'patchActivityDictionaryText'); }
         }
         // 1. R130+ TextCache：必须写入 loader.cache（ActivityDictionaryText 实际读取处）
         try {
@@ -1154,7 +1172,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             if (loader && loader.cache && typeof loader.cache === 'object') loader.cache[key] = value;
             else if (loader && typeof loader.set === 'function') loader.set(key, value);
             else if (loader && typeof loader === 'object') loader[key] = value;
-        } catch (e) {}
+        } catch (e) { silent(e, 'caSetDict.cache'); }
         // 2. 全局 ActivityDictionary 数组（兼容旧版 BC，并给 SDK hook 兜底用）
         if (Array.isArray(window.ActivityDictionary)) {
             var found = false;
@@ -1178,7 +1196,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             if (loader && loader.cache && typeof loader.cache === 'object') delete loader.cache[key];
             else if (loader && typeof loader.delete === 'function') loader.delete(key);
             else if (loader && typeof loader === 'object') delete loader[key];
-        } catch (e) {}
+        } catch (e) { silent(e, 'caRemoveDict'); }
     }
     function caRegisterDictionary(act, nm) {
         try {
@@ -1212,7 +1230,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                 caRemoveDict('Label-ChatSelf-' + g + '-' + nm);
                 caRemoveDict('ChatSelf-' + g + '-' + nm);
             });
-        } catch (e) {}
+        } catch (e) { silent(e, 'caUnregisterDictionary'); }
     }
 
     function caRegister(act) {
@@ -1306,7 +1324,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         // 兜底：部分 mod（如 echo/回声）可能在更晚的时机才把动作注册进全局数组，
         // 这里延迟重新扫描并物理移除一次，确保启动后不残留 echo 原始重复动作。
         setTimeout(function() {
-            try { rebuildEchoSuppressed(); caRemoveSuppressedEchoActivities(); } catch (e) {}
+            try { rebuildEchoSuppressed(); caRemoveSuppressedEchoActivities(); } catch (e) { silent(e, 'echoSuppressCleanup'); }
         }, 2000);
     }
     function saveCustomActions() { persist(S_CUSTOM, state.customActions); }
@@ -1335,6 +1353,11 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         if (act.source === 'echo' && act.name && !state.customActions.some(function(a) { return a.name === act.name && a.source === 'echo'; })) {
             state.echoSuppressed.delete(act.name);
             if (act.echoName) state.echoSuppressed.delete(act.echoName);
+            saveEchoSuppressed();
+        }
+        // 若删除的是小酥来源动作，则解除其原版(XSAct_)屏蔽，使其重新可见
+        if (act.source === 'xiaosu' && act.xiaosuName) {
+            state.echoSuppressed.delete(act.xiaosuName);
             saveEchoSuppressed();
         }
         saveCustomActions();
@@ -1532,8 +1555,8 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
     function caRawAllActivities(fam) {
         try {
             if (typeof ActivityFemale3DCG !== 'undefined' && Array.isArray(ActivityFemale3DCG)) return ActivityFemale3DCG;
-        } catch (e) {}
-        try { if (typeof AssetAllActivities === 'function') return AssetAllActivities(fam || 'Female3DCG'); } catch (e) {}
+        } catch (e) { silent(e, 'getActivitiesNative'); }
+        try { if (typeof AssetAllActivities === 'function') return AssetAllActivities(fam || 'Female3DCG'); } catch (e) { silent(e, 'getActivitiesAssetAll'); }
         return [];
     }
     /**
@@ -1684,6 +1707,32 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             '<button class="xsact-ca-toggleall' + (allOn ? ' is-on' : '') + '" id="xsact-ca-toggleall" title="' + (allOn ? '当前全部开启，点击全部关闭' : '当前全部关闭，点击全部开启') + '">' + svgIcon(allOn ? 'toggleOn' : 'toggleOff', 16) + '</button>' +
             '</div></div>';
 
+        // 分类 chip 过滤栏：按来源（all/xiaosu/native/echo）单选；空分类置灰
+        var _counts = { all: acts.length, xiaosu: 0, native: 0, echo: 0 };
+        acts.forEach(function(a) {
+            if (a.source === 'xiaosu') _counts.xiaosu++;
+            else if (a.source === 'echo') _counts.echo++;
+            else _counts.native++;
+        });
+        var _chips = [
+            { key: 'all', label: '全部', count: _counts.all, color: 'all' },
+            { key: 'xiaosu', label: '小酥', count: _counts.xiaosu, color: 'xiaosu' },
+            { key: 'native', label: '我的', count: _counts.native, color: 'native' },
+            { key: 'echo', label: 'echo', count: _counts.echo, color: 'echo' }
+        ];
+        html += '<div class="xsact-ca-chips" id="xsact-ca-chips">';
+        _chips.forEach(function(ch) {
+            var active = state.caFilter === ch.key;
+            var empty = ch.count === 0 && ch.key !== 'all';
+            var dis = empty ? ' is-disabled' : '';
+            var act = active ? ' is-active' : '';
+            html += '<button type="button" class="xsact-ca-chip ' + ch.color + act + dis + '" data-filter="' + ch.key + '"' + (empty ? ' disabled' : '') + '>' +
+                '<span class="xsact-ca-chip-label">' + ch.label + '</span>' +
+                '<span class="xsact-ca-chip-count">' + ch.count + '</span>' +
+            '</button>';
+        });
+        html += '</div>';
+
         // 编辑模式批量栏
         if (editMode) {
             html += '<div class="xsact-ca-batchbar" id="xsact-ca-batchbar">' +
@@ -1707,17 +1756,42 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                     '<button class="xsact-ca-echo-clean-btn" id="xsact-ca-echo-clean-btn" type="button">清理原 echo 数据</button>' +
                 '</div>';
             }
-        } catch (e) {}
+        } catch (e) { silent(e, 'renderEchoCleanHint'); }
+
+        // 内置小酥动作包（单行极简：仅标题 + 紧凑开关，长描述走 title hover）
+        // 仅在「小酥」chip 下显示 — 开关本身只对小酥分类有意义，
+        // 其他分类下隐藏避免视觉干扰 + 杜绝「我的」tab 下开关位置漂移。
+        if (state.caFilter === 'xiaosu') {
+            html += '<div class="xsact-ca-xiaosu" id="xsact-ca-xiaosu">' +
+                '<span class="xsact-ca-xiaosu-label" title="内置小酥动作包（XiaoSuActivity 全部 51 个动作，预编译进插件，离线可用，无需原版插件）">内置小酥动作包</span>' +
+                '<label class="xsact-ca-toggle xsact-ca-xiaosu-switch" title="开启后，「我的动作」与 BC 原生动作列表显示小酥动作拓展的全部动作">' +
+                    '<input type="checkbox" class="xsact-ca-xiaosu-pack"' + (state.xiaosuPack ? ' checked' : '') + '>' +
+                    '<span class="xsact-ca-toggle-track"></span>' +
+                '</label>' +
+            '</div>';
+        }
 
         if (!acts.length) {
             html += '<div class="xsact-qa-empty xsact-ca-empty">还没有自定义动作。点「新建」创建，或点「导入」从 echo/回声 迁移。</div>';
         } else {
-            html += '<div class="xsact-ca-list' + (editMode ? ' is-editing' : '') + '">';
-            acts.forEach(function(a) {
+            // 按当前 chip 过滤（不改 customActions 顺序，仅隐藏不匹配卡片）
+            var _flt = state.caFilter || 'all';
+            var _visibleActs = acts.filter(function(a) {
+                if (_flt === 'all') return true;
+                if (_flt === 'xiaosu') return a.source === 'xiaosu';
+                if (_flt === 'echo') return a.source === 'echo';
+                if (_flt === 'native') return !a.source || a.source === 'native';
+                return true;
+            });
+            if (!_visibleActs.length) {
+                html += '<div class="xsact-qa-empty xsact-ca-empty xsact-ca-filter-empty">当前分类下没有动作。</div>';
+            } else {
+                html += '<div class="xsact-ca-list' + (editMode ? ' is-editing' : '') + '">';
+                _visibleActs.forEach(function(a) {
                 var scopeBadge = a.scope === 'self' ? '<span class="xsact-ca-badge self">仅自己</span>'
                     : a.scope === 'other' ? '<span class="xsact-ca-badge other">仅他人</span>'
                     : '<span class="xsact-ca-badge any">皆可</span>';
-                var sourceBadge = a.source === 'echo' ? '<span class="xsact-ca-src echo" title="来自 echo/回声 导入">echo</span>' : '<span class="xsact-ca-src native" title="本插件创建">QiAct</span>';
+                var sourceBadge = a.source === 'xiaosu' ? '<span class="xsact-ca-src xiaosu" title="内置小酥动作包（预编译，无需原版插件）">小酥</span>' : a.source === 'echo' ? '<span class="xsact-ca-src echo" title="来自 echo/回声 导入">echo</span>' : '<span class="xsact-ca-src native" title="本插件创建">QiAct</span>';
                 var partLbl = (BODY_PARTS.find(function(p) { return p.group === a.group; }) || {}).label || a.group;
                 var isVisible = a.visible !== false;
                 var isSel = !!selSet[a.id];
@@ -1761,6 +1835,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                 }
             });
             html += '</div>';
+            }
         }
         html += '</div>';
         listEl.innerHTML = html;
@@ -1801,9 +1876,30 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         var echoCleanBtn = listEl.querySelector('#xsact-ca-echo-clean-btn');
         if (echoCleanBtn) echoCleanBtn.addEventListener('click', function(e) {
             e.stopPropagation();
-            if (confirm('确定清理原 echo/回声 中的自定义动作数据吗？\n仅删除其「动作数据」，不影响本插件与其他配置（清理后系统更稳定）。')) {
-                caCleanupEchoData();
-            }
+            qiactConfirm({
+                title: '清理原 echo 数据',
+                body: '确定清理原 echo/回声 中的自定义动作数据吗？\n仅删除其「动作数据」，不影响本插件与其他配置（清理后系统更稳定）。',
+                confirmText: '清理',
+                danger: true
+            }).then(function(ok) {
+                if (ok) caCleanupEchoData();
+            });
+        });
+        var packToggle = listEl.querySelector('.xsact-ca-xiaosu-pack');
+        if (packToggle) packToggle.addEventListener('change', function() {
+            setXiaosuPack(!!packToggle.checked);
+            updateCustomActionPanel(charObj);
+        });
+        // chip 过滤：点击切换 caFilter，持久化，重新渲染
+        listEl.querySelectorAll('.xsact-ca-chip').forEach(function(btn) {
+            if (btn.disabled) return;
+            btn.addEventListener('click', function() {
+                var k = btn.dataset.filter;
+                if (!k || state.caFilter === k) return;
+                state.caFilter = k;
+                persist(S_CA_FILTER, k);
+                updateCustomActionPanel(charObj);
+            });
         });
         var searchInput = listEl.querySelector('#xsact-ca-search');
         if (searchInput) searchInput.addEventListener('input', function() {
@@ -1847,7 +1943,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
                 e.stopPropagation();
                 var id = btn.dataset.id;
                 var a = getCustom(id);
-                if (a && confirm('确定删除自定义动作「' + a.name + '」吗？')) { deleteCustom(id); updateCustomActionPanel(charObj); toast('已删除', '#888'); }
+                if (a) qiactConfirm({ title: '删除动作', body: '确定删除自定义动作「' + a.name + '」吗？', confirmText: '删除', danger: true }).then(function(ok) { if (!ok) return; deleteCustom(id); updateCustomActionPanel(charObj); toast('已删除', '#888'); });
             });
         });
         listEl.querySelectorAll('.xsact-ca-visible').forEach(function(chk) {
@@ -1912,11 +2008,19 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             if (batchDeleteBtn) batchDeleteBtn.addEventListener('click', function() {
                 if (!state.caSelected.length) return;
                 var names = state.caSelected.map(function(id) { var a = getCustom(id); return a ? a.name : ''; }).filter(Boolean).join('、');
-                if (!confirm('确定批量删除以下 ' + state.caSelected.length + ' 个动作吗？\n' + names)) return;
-                state.caSelected.slice().forEach(function(id) { deleteCustom(id); });
-                state.caSelected = [];
-                updateCustomActionPanel(charObj);
-                toast('已批量删除 ' + state.caSelected.length + ' 个动作', '#FF5C5C');
+                var n = state.caSelected.length;
+                qiactConfirm({
+                    title: '批量删除 ' + n + ' 个动作',
+                    body: '确定批量删除以下动作吗？\n' + names,
+                    confirmText: '全部删除',
+                    danger: true
+                }).then(function(ok) {
+                    if (!ok) return;
+                    state.caSelected.slice().forEach(function(id) { deleteCustom(id); });
+                    state.caSelected = [];
+                    updateCustomActionPanel(charObj);
+                    toast('已批量删除 ' + n + ' 个动作', '#FF5C5C');
+                });
             });
 
             // 拖拽排序
@@ -2263,7 +2367,10 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         });
         var delBtn = listEl.querySelector('#xsact-ca-del');
         if (delBtn) delBtn.addEventListener('click', function() {
-            if (confirm('确定删除该自定义动作吗？')) { deleteCustom(act.id); state.editingCustomId = null; updateCustomActionPanel(charObj); toast('已删除', '#888'); }
+            qiactConfirm({ title: '删除动作', body: '确定删除该自定义动作吗？', confirmText: '删除', danger: true }).then(function(ok) {
+                if (!ok) return;
+                deleteCustom(act.id); state.editingCustomId = null; updateCustomActionPanel(charObj); toast('已删除', '#888');
+            });
         });
     }
 
@@ -2358,6 +2465,41 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             console.warn('[QiAct] 导入 echo/回声 动作失败:', e.message);
             toast('导入失败：' + e.message, '#FF5C5C');
         }
+    }
+
+    /**
+     * 内置「小酥动作包」同步：把预编译进插件的小酥动作（XIAOSU_PACKED，由
+     * tools/build-xiaosu-pack.mjs 从 XiaoSuActivity 仓库生成）按需并入 / 移出
+     * state.customActions。源标记为 source==='xiaosu' && builtin。
+     *   - 启用：先移除全部小酥源条目（含 legacy 克隆残留），再把打包动作按 id 补回列表（幂等）。
+     *   - 禁用：移除全部内置小酥动作（builtin + legacy），用户自建 / echo 导入不受影响。
+     * 动作以 QiAct_ 自定义动作形式内置发布，用户无需安装原版插件即可使用，
+     * 且对原版停更 / Web Worker 故障完全免疫。
+     */
+    function syncXiaosuPack() {
+        if (!Array.isArray(XIAOSU_PACKED)) return;
+        // 清理旧版克隆残留 + 内置包条目（移除全部 source==='xiaosu'，稍后按需补回；
+        // 这样关闭开关时 builtin 条目也能被正确移除，且包升级时旧条目自动被权威数据替换）
+        state.customActions = state.customActions.filter(function(a) {
+            return !(a && a.source === 'xiaosu');
+        });
+        if (state.xiaosuPack) {
+            XIAOSU_PACKED.forEach(function(p) {
+                if (!state.customActions.some(function(a) { return a.id === p.id; })) {
+                    state.customActions.push(p);
+                }
+            });
+        }
+    }
+
+    /** 开关「内置小酥动作包」：持久化 → 同步列表 → 重新注册到 BC → 刷新面板 */
+    function setXiaosuPack(enabled) {
+        state.xiaosuPack = !!enabled;
+        persist(S_XIAOSU_PACK, state.xiaosuPack);
+        syncXiaosuPack();
+        registerAllCustomActions();
+        saveCustomActions();
+        updateCustomActionPanel(state.selectedTarget);
     }
 
     /** 导出自定义动作为 JSON 文件 */
@@ -2475,6 +2617,9 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             }
         } catch (e) { console.warn('[QiAct] 清理自定义动作残留失败:', e.message); }
         state.customActions.forEach(function(act) { caRegister(act); });
+        // 末尾统一清理：把已存小酥克隆对应的原版活动从 BC 全局数组物理移除，
+        // 避免原版插件仍在运行时出现重复（无论原版是否加载，无残留则空操作）。
+        try { caRemoveSuppressedEchoActivities(); } catch (e) { silent(e, 'caRemoveSuppressedEcho'); }
     }
 
     /** 切换「全部」范围开关，并更新按钮视觉 */
@@ -2560,11 +2705,18 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
     /** 清空全部收藏动作 */
     function clearAllFavorites() {
         if (!Array.isArray(state.favorites) || state.favorites.length === 0) { toast('当前没有收藏动作', '#888'); return; }
-        if (!confirm('确定清空全部收藏动作吗？')) return;
-        state.favorites = [];
-        persist(S_FAVS, state.favorites);
-        renderPanel();
-        toast('已清空全部收藏', '#888');
+        qiactConfirm({
+            title: '清空全部收藏',
+            body: '确定清空全部收藏动作吗？此操作无法撤销。',
+            confirmText: '全部清空',
+            danger: true
+        }).then(function(ok) {
+            if (!ok) return;
+            state.favorites = [];
+            persist(S_FAVS, state.favorites);
+            renderPanel();
+            toast('已清空全部收藏', '#888');
+        });
     }
 
     /** Toast 提示 */
@@ -2590,6 +2742,79 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         el.style.opacity = '1';
         clearTimeout(el._timer);
         el._timer = setTimeout(() => { el.style.opacity = '0'; }, 2000);
+    }
+
+    /**
+     * 统一确认模态（暗色玫红，替代浏览器原生 confirm）
+     *  - 异步：返回 Promise<boolean>，true=确定，false=取消/关闭
+     *  - 支持：title / body / confirmText / cancelText / danger
+     *  - 交互：ESC 键、点遮罩、点取消 → false；点确定 → true
+     */
+    function qiactConfirm(opts) {
+        opts = opts || {};
+        return new Promise(function(resolve) {
+            // 同一时刻只允许一个确认框
+            var existing = document.getElementById('xsact-confirm');
+            if (existing) existing.remove();
+
+            var title = String(opts.title || '确认操作');
+            var body = opts.body ? String(opts.body) : '';
+            var confirmText = String(opts.confirmText || '确定');
+            var cancelText = String(opts.cancelText || '取消');
+            var danger = opts.danger !== false; // 默认危险操作（玫红强调）
+
+            var box = document.createElement('div');
+            box.id = 'xsact-confirm';
+            box.className = 'xsact-confirm';
+            box.innerHTML =
+                '<div class="xsact-confirm-box" role="dialog" aria-modal="true">' +
+                    '<div class="xsact-confirm-title"></div>' +
+                    (body ? '<div class="xsact-confirm-body"></div>' : '') +
+                    '<div class="xsact-confirm-footer">' +
+                        '<button class="xsact-confirm-btn xsact-confirm-cancel" type="button"></button>' +
+                        '<button class="xsact-confirm-btn xsact-confirm-ok' + (danger ? ' is-danger' : '') + '" type="button"></button>' +
+                    '</div>' +
+                '</div>';
+            box.querySelector('.xsact-confirm-title').textContent = title;
+            if (body) box.querySelector('.xsact-confirm-body').textContent = body;
+            box.querySelector('.xsact-confirm-cancel').textContent = cancelText;
+            box.querySelector('.xsact-confirm-ok').textContent = confirmText;
+
+            function done(result) {
+                document.removeEventListener('keydown', onKey);
+                if (box.parentNode) box.parentNode.removeChild(box);
+                resolve(result);
+            }
+            function onKey(e) {
+                if (e.key === 'Escape') { e.preventDefault(); done(false); }
+                else if (e.key === 'Enter') { e.preventDefault(); done(true); }
+            }
+            // 监听加在 box 自身（capture 阶段），绕开 BC 页面在 body/document 层的 keydown 拦截
+            box.addEventListener('keydown', onKey, true);
+            // 兜底：document 上也监听（正常浏览器中点 modal 内元素后 Esc 应能冒泡到此）
+            document.addEventListener('keydown', onKey, false);
+            box.addEventListener('click', function(e) {
+                if (e.target === box) done(false); // 点击遮罩
+            });
+            box.querySelector('.xsact-confirm-cancel').addEventListener('click', function() { done(false); });
+            box.querySelector('.xsact-confirm-ok').addEventListener('click', function() { done(true); });
+
+            document.body.appendChild(box);
+            // 自动 focus 到确定按钮，回车即确认
+            setTimeout(function() {
+                var ok = box.querySelector('.xsact-confirm-ok');
+                if (ok) ok.focus();
+            }, 30);
+        });
+    }
+
+    // 兼容旧版 confirm 调用（同步返回，仅用于不支持 Promise 的旧位置；新代码用 qiactConfirm）
+    function qiactConfirmSync(opts) {
+        // 兼容：极少数老调用方是同步 if(confirm(...)) 写法。
+        // 这里用全局锁 + 轮询检测，**不推荐**新代码使用。
+        var _qiactConfirmPending = null;
+        // 实际上当前没有调用方使用 confirm()，所以这是预留接口
+        return qiactConfirm(opts);
     }
 
     // ════════════════════════════════════════════════════════════════════════
@@ -3581,7 +3806,10 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             btn.addEventListener('click', function(e) {
                 e.stopPropagation();
                 var id = btn.closest('.xsact-combo-card').dataset.id;
-                if (confirm('确定删除这个组合吗？')) { deleteCombo(id); updateComboPanel(charObj); }
+                qiactConfirm({ title: '删除组合', body: '确定删除这个组合吗？', confirmText: '删除', danger: true }).then(function(ok) {
+                    if (!ok) return;
+                    deleteCombo(id); updateComboPanel(charObj);
+                });
             });
         });
         var newBtn = listEl.querySelector('#xsact-new-combo-btn');
@@ -4333,6 +4561,22 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             '.xsact-ca-import-menu button:hover{background:var(--xs-hover);border-color:var(--xs-border);}',
             '.xsact-ca-file-input{position:absolute;opacity:0;width:0;height:0;pointer-events:none;}',
 
+            /* ── 分类 chip 过滤栏：按来源（all/xiaosu/native/echo）单选 ── */
+            '.xsact-ca-chips{display:flex;flex-wrap:wrap;gap:6px;width:100%;min-width:0;padding:2px 0 4px;}',
+            '.xsact-ca-chip{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:999px;border:1px solid var(--xs-border);background:var(--xs-btn-bg);color:var(--xs-text-dim);font-size:12px;font-weight:600;cursor:pointer;transition:background .15s,border-color .15s,color .15s,box-shadow .15s;}',
+            '.xsact-ca-chip:hover:not(.is-disabled):not(.is-active){background:var(--xs-hover);border-color:var(--xs-border-strong);color:var(--xs-text);}',
+            '.xsact-ca-chip-count{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 6px;border-radius:9px;background:rgba(255,255,255,0.08);color:var(--xs-text-dim);font-size:10px;font-weight:700;line-height:1;}',
+            '.xsact-ca-chip.is-active.xiaosu{background:rgba(255,92,122,0.20);border-color:rgba(255,92,122,0.55);color:#FFB3C6;box-shadow:0 0 0 1px rgba(255,92,122,0.25);}',
+            '.xsact-ca-chip.is-active.xiaosu .xsact-ca-chip-count{background:rgba(255,92,122,0.30);color:#FFD6DF;}',
+            '.xsact-ca-chip.is-active.native{background:rgba(160,140,255,0.20);border-color:rgba(160,140,255,0.55);color:#C4B8FF;box-shadow:0 0 0 1px rgba(160,140,255,0.25);}',
+            '.xsact-ca-chip.is-active.native .xsact-ca-chip-count{background:rgba(160,140,255,0.30);color:#DCD4FF;}',
+            '.xsact-ca-chip.is-active.echo{background:rgba(255,200,90,0.20);border-color:rgba(255,200,90,0.55);color:#FFD87A;box-shadow:0 0 0 1px rgba(255,200,90,0.25);}',
+            '.xsact-ca-chip.is-active.echo .xsact-ca-chip-count{background:rgba(255,200,90,0.30);color:#FFE9B0;}',
+            '.xsact-ca-chip.is-active.all{background:var(--xs-panel-bg-2);border-color:var(--xs-border-strong);color:var(--xs-text);box-shadow:inset 0 0 0 1px rgba(255,255,255,0.05);}',
+            '.xsact-ca-chip.is-active.all .xsact-ca-chip-count{background:rgba(255,255,255,0.16);color:var(--xs-text);}',
+            '.xsact-ca-chip.is-disabled{opacity:.42;cursor:not-allowed;}',
+            '.xsact-ca-filter-empty{padding:24px 12px;text-align:center;}',
+
             '.xsact-ca-beta{font-size:11px;line-height:1.55;color:var(--xs-accent-text);background:rgba(var(--xs-accent-rgb),0.10);border:1px solid rgba(var(--xs-accent-rgb),0.30);border-left:3px solid var(--xs-accent);border-radius:8px;padding:10px 12px;}',
 
             '.xsact-ca-echo-clean{display:flex;align-items:center;gap:12px;flex-wrap:wrap;font-size:11px;line-height:1.5;color:var(--xs-text);background:rgba(255,92,122,0.08);border:1px solid rgba(255,92,122,0.32);border-left:3px solid #FF5C7A;border-radius:8px;padding:10px 12px;margin-top:2px;}',
@@ -4356,6 +4600,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             '.xsact-ca-src{flex-shrink:0;font-size:10px;padding:2px 7px;border-radius:20px;font-weight:600;letter-spacing:0.02em;}',
             '.xsact-ca-src.echo{background:rgba(255,200,90,0.16);color:#FFD87A;}',
             '.xsact-ca-src.native{background:rgba(160,140,255,0.16);color:#C4B8FF;}',
+            '.xsact-ca-src.xiaosu{background:rgba(255,92,122,0.18);color:#FF8FA6;border:1px solid rgba(255,92,122,0.35);}',
             '.xsact-ca-card.is-hidden{opacity:.55;border-style:dashed;}',
             '.xsact-ca-editmode.is-active{background:rgba(255,92,122,0.22);border-color:rgba(255,92,122,0.55);color:#FFB3C6;}',
             '.xsact-ca-toggleall:hover{background:rgba(255,92,122,0.18);border-color:rgba(255,92,122,0.45);color:#FFB3C6;}',
@@ -4844,6 +5089,27 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             '.xsact-tooltip .xsact-tt-sub{display:block;margin-top:2px;color:var(--xs-text-dim);font-size:11px;line-height:1.4;}',
             '.xsact-tooltip.is-danger{border-color:#ff6b6b;box-shadow:0 6px 20px var(--xs-shadow),0 0 0 1px rgba(255,107,107,0.25);}',
             '.xsact-tooltip.is-danger .xsact-tt-sub{color:#ffb3b3;}',
+            /* ── 小酥动作包：内置动作开关（预编译，无需原版插件） ── */
+            '.xsact-ca-xiaosu{margin-top:2px;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 10px;border-radius:8px;background:var(--xs-card-bg);border:1px solid var(--xs-border);}',
+            '.xsact-ca-xiaosu-label{font-size:12px;color:var(--xs-text);font-weight:500;line-height:1;cursor:help;}',
+            '.xsact-ca-xiaosu-switch .xsact-ca-toggle-track{width:28px;height:15px;}',
+            '.xsact-ca-xiaosu-switch .xsact-ca-toggle-track::before{width:11px;height:11px;}',
+            '.xsact-ca-xiaosu-switch input:checked + .xsact-ca-toggle-track::before{transform:translateX(13px);}',
+            '.xsact-ca-toggle.is-disabled{opacity:.55;cursor:not-allowed;}',
+            /* ── 统一确认模态（暗色玫红，替代浏览器原生 confirm） ── */
+            '.xsact-confirm{position:fixed;inset:0;z-index:1000001;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.55);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);animation:xsact-confirm-fade .15s ease-out;}',
+            '@keyframes xsact-confirm-fade{from{opacity:0;}to{opacity:1;}}',
+            '@keyframes xsact-confirm-pop{from{opacity:0;transform:translateY(-6px) scale(.97);}to{opacity:1;transform:translateY(0) scale(1);}}',
+            '.xsact-confirm-box{width:min(380px,90vw);padding:20px 22px 16px;border-radius:12px;background:var(--xs-panel-bg);border:1px solid rgba(255,92,122,0.35);box-shadow:0 18px 60px rgba(0,0,0,0.6),0 0 0 1px rgba(255,92,122,0.12);animation:xsact-confirm-pop .18s cubic-bezier(.16,1,.3,1);}',
+            '.xsact-confirm-title{font-size:14px;font-weight:600;color:#FFB3C6;margin-bottom:8px;line-height:1.4;}',
+            '.xsact-confirm-body{font-size:13px;line-height:1.65;color:var(--xs-text-dim);white-space:pre-wrap;word-break:break-word;}',
+            '.xsact-confirm-footer{display:flex;justify-content:flex-end;gap:8px;margin-top:18px;}',
+            '.xsact-confirm-btn{padding:7px 16px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid transparent;transition:background .15s,border-color .15s,color .15s;}',
+            '.xsact-confirm-cancel{background:rgba(255,255,255,0.04);border-color:var(--xs-border);color:var(--xs-text-dim);}',
+            '.xsact-confirm-cancel:hover{background:rgba(255,255,255,0.08);color:var(--xs-text);border-color:var(--xs-border-strong);}',
+            '.xsact-confirm-ok{background:rgba(255,92,122,0.20);border-color:rgba(255,92,122,0.5);color:#FFB3C6;}',
+            '.xsact-confirm-ok:hover{background:rgba(255,92,122,0.32);border-color:#FF5C7A;color:#fff;}',
+            '.xsact-confirm-ok.is-danger{background:rgba(255,92,122,0.28);border-color:rgba(255,92,122,0.6);}',
         ].join('\n');
         document.head.appendChild(css);
     }
@@ -5361,6 +5627,64 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
 
 
 
+    /* ===== 20. 内置小酥动作包（XiaoSuActivity 动作预编译，离线可用） ===== */
+    /* 由 tools/build-xiaosu-pack.mjs 从 XiaoSuActivity 仓库生成；原作 MIT 许可，作者 XiaoSu。
+       动作以 QiAct_ 自定义动作形式内置，无需安装原版插件即可使用，且对原版停更/故障免疫。 */
+    var XIAOSU_PACKED = [
+    {"id":"xs_XSAct_眯眼","name":"眯眼","scope":"self","group":"ItemHead","dialog":"眯眼","dialogSelf":"{SourceCharacter}眯了眯眼.","createdAt":0,"source":"xiaosu","builtin":true,"xiaosuName":"XSAct_眯眼","visible":true},
+    {"id":"xs_XSAct_眼神飘忽","name":"眼神飘忽","scope":"self","group":"ItemHead","dialog":"眼神飘忽","dialogSelf":"{SourceCharacter}眼神飘忽的左看右看.","createdAt":0,"source":"xiaosu","builtin":true,"xiaosuName":"XSAct_眼神飘忽","visible":true},
+    {"id":"xs_XSAct_甩头发","name":"甩头发","scope":"self","group":"ItemHood","dialog":"甩头发","dialogSelf":"{SourceCharacter}甩动着头发.","createdAt":0,"source":"xiaosu","builtin":true,"xiaosuName":"XSAct_甩头发","visible":true},
+    {"id":"xs_XSAct_大力甩头发","name":"大力甩头发","scope":"self","group":"ItemHood","dialog":"大力甩头发","dialogSelf":"{SourceCharacter}连连摇头，慌乱的甩动着头发.","createdAt":0,"source":"xiaosu","builtin":true,"xiaosuName":"XSAct_大力甩头发","visible":true},
+    {"id":"xs_XSAct_轻抚发梢","name":"轻抚发梢","scope":"any","group":"ItemHood","dialog":"{SourceCharacter}轻柔抚动着{TargetCharacter}的头发.","dialogSelf":"{SourceCharacter}轻柔抚动着自己的头发.","createdAt":0,"source":"xiaosu","builtin":true,"xiaosuName":"XSAct_轻抚发梢","visible":true},
+    {"id":"xs_XSAct_叼起头发","name":"叼起头发","scope":"any","group":"ItemHood","dialog":"{SourceCharacter}轻轻咬起{TargetCharacter}的头发.","dialogSelf":"{SourceCharacter}轻轻咬起自己的头发.","createdAt":0,"source":"xiaosu","builtin":true,"xiaosuName":"XSAct_叼起头发","visible":true},
+    {"id":"xs_XSAct_嗅头发","name":"嗅头发","scope":"any","group":"ItemHood","dialog":"{SourceCharacter}在{TargetCharacter}的发间嗅着，鼻息弥漫着{TargetCharacter}的发香.","dialogSelf":"{SourceCharacter}撩起自己的头发轻轻嗅着.","createdAt":0,"source":"xiaosu","builtin":true,"xiaosuName":"XSAct_嗅头发","visible":true},
+    {"id":"xs_XSAct_绕头发","name":"绕头发","scope":"any","group":"ItemHood","dialog":"{SourceCharacter}勾起一缕{TargetCharacter}的发丝，在指尖绕来绕去.","dialogSelf":"{SourceCharacter}勾起自己的一缕头发在指尖绕来绕去.","createdAt":0,"source":"xiaosu","builtin":true,"xiaosuName":"XSAct_绕头发","visible":true},
+    {"id":"xs_XSAct_皱鼻子","name":"皱鼻子","scope":"self","group":"ItemNose","dialog":"皱鼻子","dialogSelf":"{SourceCharacter}皱了皱自己的鼻头.","createdAt":0,"source":"xiaosu","builtin":true,"xiaosuName":"XSAct_皱鼻子","visible":true},
+    {"id":"xs_XSAct_打喷嚏","name":"打喷嚏","scope":"self","group":"ItemNose","dialog":"打喷嚏","dialogSelf":"{SourceCharacter}打了个喷嚏.","createdAt":0,"source":"xiaosu","builtin":true,"xiaosuName":"XSAct_打喷嚏","visible":true},
+    {"id":"xs_XSAct_深呼吸","name":"深呼吸","scope":"self","group":"ItemNose","dialog":"深呼吸","dialogSelf":"{SourceCharacter}深深的吸了口气.","createdAt":0,"source":"xiaosu","builtin":true,"xiaosuName":"XSAct_深呼吸","visible":true},
+    {"id":"xs_XSAct_低头","name":"低头","scope":"self","group":"ItemHood","dialog":"低头","dialogSelf":"{SourceCharacter}红润着脸蛋低头逃避.","createdAt":0,"source":"xiaosu","builtin":true,"xiaosuName":"XSAct_低头","visible":true},
+    {"id":"xs_XSAct_恳求的摇头","name":"恳求的摇头","scope":"other","group":"ItemHead","dialog":"{SourceCharacter}对着{TargetCharacter}的方向恳求的摇头.","dialogSelf":"{SourceCharacter}对着{TargetCharacter}的方向恳求的摇头.","createdAt":0,"source":"xiaosu","builtin":true,"xiaosuName":"XSAct_恳求的摇头","visible":true},
+    {"id":"xs_XSAct_恳求的看","name":"恳求的看","scope":"other","group":"ItemHead","dialog":"{SourceCharacter}汪着眼睛恳求的看着{TargetCharacter}.","dialogSelf":"{SourceCharacter}汪着眼睛恳求的看着{TargetCharacter}.","createdAt":0,"source":"xiaosu","builtin":true,"xiaosuName":"XSAct_恳求的看","visible":true},
+    {"id":"xs_XSAct_内八夹腿","name":"内八夹腿","scope":"self","group":"ItemLegs","dialog":"内八夹腿","dialogSelf":"{SourceCharacter}通红的脸蛋忍耐着快感，大腿紧紧夹起来，摆出着内八的姿势，身体微微颤抖.","createdAt":0,"source":"xiaosu","builtin":true,"xiaosuName":"XSAct_内八夹腿","visible":true},
+    {"id":"xs_XSAct_噘嘴","name":"噘嘴","scope":"self","group":"ItemMouth","dialog":"噘嘴","dialogSelf":"{SourceCharacter}有些不满的噘起嘴巴.","createdAt":0,"source":"xiaosu","builtin":true,"xiaosuName":"XSAct_噘嘴","visible":true},
+    {"id":"xs_XSAct_抿住嘴巴","name":"抿住嘴巴","scope":"self","group":"ItemMouth","dialog":"抿住嘴巴","dialogSelf":"{SourceCharacter}抿住嘴巴.","createdAt":0,"source":"xiaosu","builtin":true,"xiaosuName":"XSAct_抿住嘴巴","visible":true},
+    {"id":"xs_XSAct_瘪嘴","name":"瘪嘴","scope":"self","group":"ItemMouth","dialog":"瘪嘴","dialogSelf":"{SourceCharacter}瘪着嘴巴，一副委屈的样子.","createdAt":0,"source":"xiaosu","builtin":true,"xiaosuName":"XSAct_瘪嘴","visible":true},
+    {"id":"xs_XSAct_坐直身体","name":"坐直身体","scope":"self","group":"ItemTorso","dialog":"坐直身体","dialogSelf":"{SourceCharacter}挺直了腰，坐直了身体.","createdAt":0,"source":"xiaosu","builtin":true,"xiaosuName":"XSAct_坐直身体","visible":true},
+    {"id":"xs_XSAct_挺胸收腹","name":"挺胸收腹","scope":"self","group":"ItemBreast","dialog":"挺胸收腹","dialogSelf":"{SourceCharacter}挺起胸部，微收下巴，腹部用力收腰.","createdAt":0,"source":"xiaosu","builtin":true,"xiaosuName":"XSAct_挺胸收腹","visible":true},
+    {"id":"xs_XSAct_站直身体","name":"站直身体","scope":"self","group":"ItemTorso","dialog":"站直身体","dialogSelf":"{SourceCharacter}挺胸收腹，努力绷紧小腿，站直了身体.","createdAt":0,"source":"xiaosu","builtin":true,"xiaosuName":"XSAct_站直身体","visible":true},
+    {"id":"xs_XSAct_身体一颤","name":"身体一颤","scope":"self","group":"ItemTorso","dialog":"身体一颤","dialogSelf":"{SourceCharacter}的身体猛然颤抖了一下.","createdAt":0,"source":"xiaosu","builtin":true,"xiaosuName":"XSAct_身体一颤","visible":true},
+    {"id":"xs_XSAct_活动大腿","name":"活动大腿","scope":"self","group":"ItemLegs","dialog":"活动大腿","dialogSelf":"{SourceCharacter}尝试活动了一下腿部.","createdAt":0,"source":"xiaosu","builtin":true,"xiaosuName":"XSAct_活动大腿","visible":true},
+    {"id":"xs_XSAct_活动手臂","name":"活动手臂","scope":"self","group":"ItemArms","dialog":"活动手臂","dialogSelf":"{SourceCharacter}一边按摩一边活动着手臂.","createdAt":0,"source":"xiaosu","builtin":true,"xiaosuName":"XSAct_活动手臂","visible":true},
+    {"id":"xs_XSAct_绷紧膝盖","name":"绷紧膝盖","scope":"self","group":"ItemLegs","dialog":"绷紧膝盖","dialogSelf":"{SourceCharacter}努力的绷紧膝盖，尽可能站的更直.","createdAt":0,"source":"xiaosu","builtin":true,"xiaosuName":"XSAct_绷紧膝盖","visible":true},
+    {"id":"xs_XSAct_绷直脚踝","name":"绷直脚踝","scope":"self","group":"ItemBoots","dialog":"绷直脚踝","dialogSelf":"{SourceCharacter}不自觉的用力绷直脚踝，释放涌来的快感.","createdAt":0,"source":"xiaosu","builtin":true,"xiaosuName":"XSAct_绷直脚踝","visible":true},
+    {"id":"xs_XSAct_蜷缩脚趾","name":"蜷缩脚趾","scope":"self","group":"ItemBoots","dialog":"蜷缩脚趾","dialogSelf":"{SourceCharacter}脚趾互相纠结，又时而蜷缩，忍耐着快感袭来.","createdAt":0,"source":"xiaosu","builtin":true,"xiaosuName":"XSAct_蜷缩脚趾","visible":true},
+    {"id":"xs_XSAct_踮脚","name":"踮脚","scope":"self","group":"ItemBoots","dialog":"踮脚","dialogSelf":"{SourceCharacter}努力的踮起脚.","createdAt":0,"source":"xiaosu","builtin":true,"xiaosuName":"XSAct_踮脚","visible":true},
+    {"id":"xs_XSAct_兴奋的伸出舌头","name":"兴奋的伸出舌头","scope":"self","group":"ItemMouth","dialog":"兴奋的伸出舌头","dialogSelf":"{SourceCharacter}兴奋的伸出舌头.}","createdAt":0,"source":"xiaosu","builtin":true,"xiaosuName":"XSAct_兴奋的伸出舌头","visible":true},
+    {"id":"xs_XSAct_兴奋的扭动","name":"兴奋的扭动","scope":"self","group":"ItemTorso","dialog":"兴奋的扭动","dialogSelf":"{SourceCharacter}兴奋的扭动着身体.","createdAt":0,"source":"xiaosu","builtin":true,"xiaosuName":"XSAct_兴奋的扭动","visible":true},
+    {"id":"xs_XSAct_呼吸平复","name":"呼吸平复","scope":"self","group":"ItemNose","dialog":"呼吸平复","dialogSelf":"{SourceCharacter}的呼吸渐渐平复.","createdAt":0,"source":"xiaosu","builtin":true,"xiaosuName":"XSAct_呼吸平复","visible":true},
+    {"id":"xs_XSAct_呼吸紊乱","name":"呼吸紊乱","scope":"self","group":"ItemNose","dialog":"呼吸紊乱","dialogSelf":"{SourceCharacter}的呼吸渐渐紊乱起来，发出软软的鼻音.","createdAt":0,"source":"xiaosu","builtin":true,"xiaosuName":"XSAct_呼吸紊乱","visible":true},
+    {"id":"xs_XSAct_嘟囔着想说什么","name":"嘟囔着想说什么","scope":"self","group":"ItemMouth","dialog":"嘟囔着想说什么","dialogSelf":"{SourceCharacter}嘟囔着想说什么.","createdAt":0,"source":"xiaosu","builtin":true,"xiaosuName":"XSAct_嘟囔着想说什么","visible":true},
+    {"id":"xs_XSAct_失神的伸出舌头","name":"失神的伸出舌头","scope":"self","group":"ItemMouth","dialog":"失神的伸出舌头","dialogSelf":"{SourceCharacter}失神的伸出自己的舌头.","createdAt":0,"source":"xiaosu","builtin":true,"xiaosuName":"XSAct_失神的伸出舌头","visible":true},
+    {"id":"xs_XSAct_慢慢伸出舌头","name":"慢慢伸出舌头","scope":"self","group":"ItemMouth","dialog":"慢慢伸出舌头","dialogSelf":"{SourceCharacter}慢慢的伸出了自己的舌头.","createdAt":0,"source":"xiaosu","builtin":true,"xiaosuName":"XSAct_慢慢伸出舌头","visible":true},
+    {"id":"xs_XSAct_微微摇头","name":"微微摇头","scope":"self","group":"ItemHead","dialog":"微微摇头","dialogSelf":"{SourceCharacter}微微的摇了摇头.","createdAt":0,"source":"xiaosu","builtin":true,"xiaosuName":"XSAct_微微摇头","visible":true},
+    {"id":"xs_XSAct_微微点头","name":"微微点头","scope":"self","group":"ItemHead","dialog":"微微点头","dialogSelf":"{SourceCharacter}微微的点了点头.","createdAt":0,"source":"xiaosu","builtin":true,"xiaosuName":"XSAct_微微点头","visible":true},
+    {"id":"xs_XSAct_身体颤抖的摇头","name":"身体颤抖的摇头","scope":"self","group":"ItemHead","dialog":"身体颤抖的摇头","dialogSelf":"{SourceCharacter}浑身颤抖的摇了摇头.","createdAt":0,"source":"xiaosu","builtin":true,"xiaosuName":"XSAct_身体颤抖的摇头","visible":true},
+    {"id":"xs_XSAct_身体颤抖的点头","name":"身体颤抖的点头","scope":"self","group":"ItemHead","dialog":"身体颤抖的点头","dialogSelf":"{SourceCharacter}浑身颤抖的点了点头.","createdAt":0,"source":"xiaosu","builtin":true,"xiaosuName":"XSAct_身体颤抖的点头","visible":true},
+    {"id":"xs_XSAct_歪头疑惑","name":"歪头疑惑","scope":"self","group":"ItemNeck","dialog":"歪头疑惑","dialogSelf":"{SourceCharacter}歪着脑袋一副疑惑的样子.","createdAt":0,"source":"xiaosu","builtin":true,"xiaosuName":"XSAct_歪头疑惑","visible":true},
+    {"id":"xs_XSAct_扭动身体","name":"扭动身体","scope":"self","group":"ItemTorso","dialog":"扭动身体","dialogSelf":"{SourceCharacter}扭动着身体.","createdAt":0,"source":"xiaosu","builtin":true,"xiaosuName":"XSAct_扭动身体","visible":true},
+    {"id":"xs_XSAct_活动四肢","name":"活动四肢","scope":"other","group":"ItemArms","dialog":"活动四肢","dialogSelf":"{SourceCharacter}活动了下自己的四肢.","createdAt":0,"source":"xiaosu","builtin":true,"xiaosuName":"XSAct_活动四肢","visible":true},
+    {"id":"xs_XSAct_看他","name":"看他","scope":"other","group":"ItemHead","dialog":"{SourceCharacter}看向了{TargetCharacter}.","dialogSelf":"{SourceCharacter}看向了{TargetCharacter}.","createdAt":0,"source":"xiaosu","builtin":true,"xiaosuName":"XSAct_看他","visible":true},
+    {"id":"xs_XSAct_缩脖子","name":"缩脖子","scope":"self","group":"ItemNeck","dialog":"缩脖子","dialogSelf":"{SourceCharacter}缩了下自己的脖子.","createdAt":0,"source":"xiaosu","builtin":true,"xiaosuName":"XSAct_缩脖子","visible":true},
+    {"id":"xs_XSAct_脸红喘气","name":"脸红喘气","scope":"self","group":"ItemMouth","dialog":"脸红喘气","dialogSelf":"{SourceCharacter}面色潮红的喘着气.","createdAt":0,"source":"xiaosu","builtin":true,"xiaosuName":"XSAct_脸红喘气","visible":true},
+    {"id":"xs_XSAct_轻声喘气","name":"轻声喘气","scope":"self","group":"ItemMouth","dialog":"轻声喘气","dialogSelf":"{SourceCharacter}轻声喘着气.","createdAt":0,"source":"xiaosu","builtin":true,"xiaosuName":"XSAct_轻声喘气","visible":true},
+    {"id":"xs_XSAct_跺脚","name":"跺脚","scope":"self","group":"ItemBoots","dialog":"跺脚","dialogSelf":"{SourceCharacter}跺了跺脚.","createdAt":0,"source":"xiaosu","builtin":true,"xiaosuName":"XSAct_跺脚","visible":true},
+    {"id":"xs_XSAct_头蹭","name":"头蹭","scope":"other","group":"ItemHead","dialog":"{SourceCharacter}用自己的脑袋蹭了蹭{TargetCharacter}的头.","dialogSelf":"{SourceCharacter}用自己的脑袋蹭了蹭{TargetCharacter}的头.","createdAt":0,"source":"xiaosu","builtin":true,"xiaosuName":"XSAct_头蹭","visible":true},
+    {"id":"xs_XSAct_脸蹭","name":"脸蹭","scope":"other","group":"ItemHead","dialog":"{SourceCharacter}用自己的脸颊蹭了蹭{TargetCharacter}的头.","dialogSelf":"{SourceCharacter}用自己的脸颊蹭了蹭{TargetCharacter}的头.","createdAt":0,"source":"xiaosu","builtin":true,"xiaosuName":"XSAct_脸蹭","visible":true},
+    {"id":"xs_XSAct_鼻子蹭","name":"鼻子蹭","scope":"other","group":"ItemHead","dialog":"{SourceCharacter}用自己的鼻子蹭了蹭{TargetCharacter}的头.","dialogSelf":"{SourceCharacter}用自己的鼻子蹭了蹭{TargetCharacter}的头.","createdAt":0,"source":"xiaosu","builtin":true,"xiaosuName":"XSAct_鼻子蹭","visible":true},
+    {"id":"xs_XSAct_埋怀里","name":"埋怀里","scope":"other","group":"ItemBreast","dialog":"{SourceCharacter}把脑袋埋在{TargetCharacter}的怀里.","dialogSelf":"{SourceCharacter}把脑袋埋在{TargetCharacter}的怀里.","createdAt":0,"source":"xiaosu","builtin":true,"xiaosuName":"XSAct_埋怀里","visible":true}
+    ];
+
+
     /* ===== 15. 启动与初始化 ===== */
     async function main() {
         logD('v' + VERSION + ' 初始化...');
@@ -5418,7 +5742,24 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         state.lastAction = loadStorage(S_LAST, null);
         state.combos = loadSetting(S_COMBOS, []);
         loadCustomActions();
-        registerAllCustomActions(); // 重新注册已存自定义动作到 BC，使本会话内可执行
+        state.xiaosuPack = loadSetting(S_XIAOSU_PACK, true);
+        // 「我的动作」分类 chip 过滤：caFilter 是受控枚举字符串，
+        // 走通用 loadSetting 会触发 loadStorage 的 JSON.parse（对裸字符串抛 SyntaxError）污染控制台。
+        // 这里直接用白名单 + 静默 try/catch 兜底，避免控制台噪声。
+        (function() {
+            var VALID = { all: 1, xiaosu: 1, native: 1, echo: 1 };
+            var v;
+            try { v = localStorage.getItem(S_CA_FILTER); if (v) v = JSON.parse(v); } catch (e) { v = undefined; }
+            if (typeof v !== 'string' || !VALID[v]) {
+                try {
+                    var sv = loadFromServer(S_CA_FILTER, undefined);
+                    v = (typeof sv === 'string' && VALID[sv]) ? sv : 'all';
+                } catch (e) { v = 'all'; }
+            }
+            state.caFilter = v;
+        })();
+        syncXiaosuPack(); // 合并内置「小酥动作包」到 customActions（幂等，默认开启）
+        registerAllCustomActions(); // 重新注册已存自定义动作 + 内置包到 BC，使本会话内可执行
 
         // 恢复主题设置（优先读游戏账号，回退本地）
         state.theme = loadSetting(S_THEME, 'dark');
@@ -5484,11 +5825,25 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             getEchoData: caGetEchoData,
             getEchoSuppressed: function() { return Array.from(state.echoSuppressed); },
             importFromEcho: importCustomFromEcho,
+            setXiaosuPack: setXiaosuPack,
+            getXiaosuPack: function() { return !!state.xiaosuPack; },
+            syncXiaosuPack: syncXiaosuPack,
+            getCaFilter: function() { return state.caFilter; },
+            setCaFilter: function(k) { var v = (k === 'xiaosu' || k === 'native' || k === 'echo' || k === 'all') ? k : 'all'; state.caFilter = v; try { persist(S_CA_FILTER, v); } catch (_) { silent(_, 'setCaFilter.persist'); } try { if (typeof updateCustomActionPanel === 'function' && state && state.actionPanelEl) updateCustomActionPanel(state._lastCharObj || null); } catch (_) { silent(_, 'setCaFilter.render'); } return v; },
             rebuildEchoSuppressed: rebuildEchoSuppressed,
             removeSuppressedEchoActivities: caRemoveSuppressedEchoActivities,
             cleanupEchoData: caCleanupEchoData,
             upsertCustom: upsertCustom,
             deleteCustom: deleteCustom,
+            // 测试用：以新数组整体替换 customActions（清旧注册 + 重新注册 + 持久化）
+            replaceCustomActions: function(arr) {
+                try { if (Array.isArray(state.customActions)) state.customActions.slice().forEach(function(a) { try { caUnregister(a); } catch (_) { silent(_, 'caUnregister'); } }); } catch (_) { silent(_, 'replaceCustomActions'); }
+                state.customActions = Array.isArray(arr) ? arr : [];
+                registerAllCustomActions();
+                saveCustomActions();
+                return state.customActions.length;
+            },
+            getCustomActions: function() { return state.customActions.slice(); },
             caHash: caHash,
             caActivityName: caActivityName,
             caFindByActivityName: caFindByActivityName,

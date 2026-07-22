@@ -32,24 +32,26 @@
   <text x="84" y="305" font-size="24" font-weight="500" fill="#B8BEC8">Bondage Club 互动动作快捷插件</text>
   <text x="84" y="340" font-size="22" font-weight="400" fill="#8A909A">点选身体部位，动作一步到位</text>
   <rect x="84" y="366" width="150" height="40" rx="20" fill="rgba(255,92,122,0.12)" stroke="#FF5C7A" stroke-opacity="0.55" filter="url(#glow)"/>
-  <text x="159" y="392" font-size="20" font-weight="700" fill="#FF5C7A" text-anchor="middle">v1.0.0</text>
-  <g font-size="18" font-weight="500" fill="#D8DDE6" text-anchor="middle">
+  <text x="159" y="392" font-size="20" font-weight="700" fill="#FF5C7A" text-anchor="middle">v1.3.0</text>
+  <g font-size="17" font-weight="500" fill="#D8DDE6" text-anchor="middle">
     <rect x="600" y="92" width="140" height="46" rx="10" fill="rgba(255,255,255,0.05)" stroke="rgba(255,255,255,0.10)"/>
     <text x="670" y="122">Body Zones</text>
     <rect x="600" y="158" width="140" height="46" rx="10" fill="rgba(255,255,255,0.05)" stroke="rgba(255,255,255,0.10)"/>
     <text x="670" y="188">Favorites</text>
     <rect x="600" y="224" width="140" height="46" rx="10" fill="rgba(255,255,255,0.05)" stroke="rgba(255,255,255,0.10)"/>
     <text x="670" y="254">Self Mode</text>
-    <rect x="600" y="290" width="140" height="46" rx="10" fill="rgba(255,255,255,0.05)" stroke="rgba(255,255,255,0.10)"/>
-    <text x="670" y="320">Themes</text>
     <rect x="760" y="92" width="140" height="46" rx="10" fill="rgba(255,255,255,0.05)" stroke="rgba(255,255,255,0.10)"/>
     <text x="830" y="122">All-Room</text>
     <rect x="760" y="158" width="140" height="46" rx="10" fill="rgba(255,255,255,0.05)" stroke="rgba(255,255,255,0.10)"/>
     <text x="830" y="188">Combos</text>
     <rect x="760" y="224" width="140" height="46" rx="10" fill="rgba(255,255,255,0.05)" stroke="rgba(255,255,255,0.10)"/>
     <text x="830" y="254">ECHO</text>
-    <rect x="760" y="290" width="140" height="46" rx="10" fill="rgba(255,255,255,0.05)" stroke="rgba(255,255,255,0.10)"/>
-    <text x="830" y="320">LSCG</text>
+    <rect x="920" y="92" width="140" height="46" rx="10" fill="rgba(255,92,122,0.10)" stroke="rgba(255,92,122,0.35)"/>
+    <text x="990" y="122" fill="#FF8FA6">XiaoSu Pack</text>
+    <rect x="920" y="158" width="140" height="46" rx="10" fill="rgba(255,255,255,0.05)" stroke="rgba(255,255,255,0.10)"/>
+    <text x="990" y="188">LSCG</text>
+    <rect x="920" y="224" width="140" height="46" rx="10" fill="rgba(255,255,255,0.05)" stroke="rgba(255,255,255,0.10)"/>
+    <text x="990" y="254">Themes</text>
   </g>
   <g filter="url(#glow)" fill="none" stroke="#FF5C7A">
     <circle cx="1085" cy="210" r="64" stroke-opacity="0.30" stroke-width="1.5"/>

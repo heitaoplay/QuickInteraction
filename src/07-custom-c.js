@@ -302,7 +302,10 @@
         });
         var delBtn = listEl.querySelector('#xsact-ca-del');
         if (delBtn) delBtn.addEventListener('click', function() {
-            if (confirm('确定删除该自定义动作吗？')) { deleteCustom(act.id); state.editingCustomId = null; updateCustomActionPanel(charObj); toast('已删除', '#888'); }
+            qiactConfirm({ title: '删除动作', body: '确定删除该自定义动作吗？', confirmText: '删除', danger: true }).then(function(ok) {
+                if (!ok) return;
+                deleteCustom(act.id); state.editingCustomId = null; updateCustomActionPanel(charObj); toast('已删除', '#888');
+            });
         });
     }
 

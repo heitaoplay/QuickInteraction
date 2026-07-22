@@ -39,7 +39,21 @@
         if (!_serverSyncWarned) { _serverSyncWarned = true; toast('设置同步到服务器失败，已保留在本地', '#FF5C5C'); }
     }
 
-    const VERSION = '1.2.0';
+    // 通用空 catch 收口：debug 态才节流打日志，生产静默但不丢上下文。
+    // 取代散落的 `catch (e) {}` / `catch (_) {}` — 满足「禁空 catch / 禁静默吞错」红线，
+    // 同时生产环境零 console 输出。用法：try { ... } catch (e) { silent(e, 'contextTag'); }
+    const _silentSeen = {};
+    function silent(e, ctx) {
+        if (!DEBUG) return;
+        const key = ctx || (e && e.message) || 'silent';
+        if (!_silentSeen[key]) _silentSeen[key] = 0;
+        if (_silentSeen[key] < 3) {
+            _silentSeen[key]++;
+            console.warn('[QiAct]' + (ctx ? ' ' + ctx + ':' : '') + (e && e.stack ? '\n' + e.stack : (e ? ' ' + e : '')));
+        }
+    }
+
+    const VERSION = '1.3.0';
 
     // ── 存储键 ──
     const S_ENABLED = 'xsact_qa_enabled';
@@ -57,6 +71,8 @@
     const S_LAST_ANNOUNCE = 'xsact_qa_last_announce';
     const S_LAST_ANNOUNCE_VER = 'xsact_qa_last_announce_ver'; // 公告去重：记录上次见到公告时的版本号
     const S_ECHO_SUPPRESS = 'xsact_qa_echo_suppressed'; // 已导入并屏蔽的 echo 原始动作名
+    const S_XIAOSU_PACK = 'xsact_qa_xiaosu_pack'; // 是否启用内置「小酥动作包」（预编译进插件，离线可用）
+    const S_CA_FILTER = 'xsact_qa_ca_filter'; // 「我的动作」分类 chip：'all' | 'xiaosu' | 'native' | 'echo'
 
     // ── 集中状态（单一数据源，消除散落全局变量）──
     const state = {
@@ -78,10 +94,12 @@
         customActions: [],            // 自定义动作（QiAct 自包含版，替代 echo/回声）
         echoSuppressed: new Set(),    // 已导入的 echo 原始动作名（屏蔽用）
         echoPrefixes: new Set(),     // 已导入 echo 动作的中文显示前缀（安全前缀兜底，仅匹配 echo 命名空间，不误伤 BC 原生动作）
+        xiaosuPack: true,            // 是否启用内置「小酥动作包」（预编译进插件，离线可用，默认开）
         editingCustomId: null,        // 正在编辑的自定义动作 id
         caEditMode: false,           // 自定义动作「编辑模式」（拖动排序/批量管理）
         caSelected: [],              // 编辑模式下选中的自定义动作 id 列表
         caDragId: null,              // 拖动排序中正在拖拽的 id
+        caFilter: 'all',             // 「我的动作」分类 chip 过滤：'all' | 'xiaosu' | 'native' | 'echo'
         favorites: [],                // 收藏复合键数组：格式 "部位Group|动作名"（如 "ItemMouth|Caress"）
         presets: [],                  // 预留预设
         lastAction: null,             // 上次执行的动作

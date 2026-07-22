@@ -202,7 +202,10 @@
             btn.addEventListener('click', function(e) {
                 e.stopPropagation();
                 var id = btn.closest('.xsact-combo-card').dataset.id;
-                if (confirm('确定删除这个组合吗？')) { deleteCombo(id); updateComboPanel(charObj); }
+                qiactConfirm({ title: '删除组合', body: '确定删除这个组合吗？', confirmText: '删除', danger: true }).then(function(ok) {
+                    if (!ok) return;
+                    deleteCombo(id); updateComboPanel(charObj);
+                });
             });
         });
         var newBtn = listEl.querySelector('#xsact-new-combo-btn');

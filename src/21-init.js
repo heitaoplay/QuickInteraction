@@ -55,7 +55,24 @@
         state.lastAction = loadStorage(S_LAST, null);
         state.combos = loadSetting(S_COMBOS, []);
         loadCustomActions();
-        registerAllCustomActions(); // 重新注册已存自定义动作到 BC，使本会话内可执行
+        state.xiaosuPack = loadSetting(S_XIAOSU_PACK, true);
+        // 「我的动作」分类 chip 过滤：caFilter 是受控枚举字符串，
+        // 走通用 loadSetting 会触发 loadStorage 的 JSON.parse（对裸字符串抛 SyntaxError）污染控制台。
+        // 这里直接用白名单 + 静默 try/catch 兜底，避免控制台噪声。
+        (function() {
+            var VALID = { all: 1, xiaosu: 1, native: 1, echo: 1 };
+            var v;
+            try { v = localStorage.getItem(S_CA_FILTER); if (v) v = JSON.parse(v); } catch (e) { v = undefined; }
+            if (typeof v !== 'string' || !VALID[v]) {
+                try {
+                    var sv = loadFromServer(S_CA_FILTER, undefined);
+                    v = (typeof sv === 'string' && VALID[sv]) ? sv : 'all';
+                } catch (e) { v = 'all'; }
+            }
+            state.caFilter = v;
+        })();
+        syncXiaosuPack(); // 合并内置「小酥动作包」到 customActions（幂等，默认开启）
+        registerAllCustomActions(); // 重新注册已存自定义动作 + 内置包到 BC，使本会话内可执行
 
         // 恢复主题设置（优先读游戏账号，回退本地）
         state.theme = loadSetting(S_THEME, 'dark');
@@ -121,11 +138,25 @@
             getEchoData: caGetEchoData,
             getEchoSuppressed: function() { return Array.from(state.echoSuppressed); },
             importFromEcho: importCustomFromEcho,
+            setXiaosuPack: setXiaosuPack,
+            getXiaosuPack: function() { return !!state.xiaosuPack; },
+            syncXiaosuPack: syncXiaosuPack,
+            getCaFilter: function() { return state.caFilter; },
+            setCaFilter: function(k) { var v = (k === 'xiaosu' || k === 'native' || k === 'echo' || k === 'all') ? k : 'all'; state.caFilter = v; try { persist(S_CA_FILTER, v); } catch (_) { silent(_, 'setCaFilter.persist'); } try { if (typeof updateCustomActionPanel === 'function' && state && state.actionPanelEl) updateCustomActionPanel(state._lastCharObj || null); } catch (_) { silent(_, 'setCaFilter.render'); } return v; },
             rebuildEchoSuppressed: rebuildEchoSuppressed,
             removeSuppressedEchoActivities: caRemoveSuppressedEchoActivities,
             cleanupEchoData: caCleanupEchoData,
             upsertCustom: upsertCustom,
             deleteCustom: deleteCustom,
+            // 测试用：以新数组整体替换 customActions（清旧注册 + 重新注册 + 持久化）
+            replaceCustomActions: function(arr) {
+                try { if (Array.isArray(state.customActions)) state.customActions.slice().forEach(function(a) { try { caUnregister(a); } catch (_) { silent(_, 'caUnregister'); } }); } catch (_) { silent(_, 'replaceCustomActions'); }
+                state.customActions = Array.isArray(arr) ? arr : [];
+                registerAllCustomActions();
+                saveCustomActions();
+                return state.customActions.length;
+            },
+            getCustomActions: function() { return state.customActions.slice(); },
             caHash: caHash,
             caActivityName: caActivityName,
             caFindByActivityName: caFindByActivityName,

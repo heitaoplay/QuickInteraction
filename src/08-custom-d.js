@@ -89,6 +89,41 @@
         }
     }
 
+    /**
+     * 内置「小酥动作包」同步：把预编译进插件的小酥动作（XIAOSU_PACKED，由
+     * tools/build-xiaosu-pack.mjs 从 XiaoSuActivity 仓库生成）按需并入 / 移出
+     * state.customActions。源标记为 source==='xiaosu' && builtin。
+     *   - 启用：先移除全部小酥源条目（含 legacy 克隆残留），再把打包动作按 id 补回列表（幂等）。
+     *   - 禁用：移除全部内置小酥动作（builtin + legacy），用户自建 / echo 导入不受影响。
+     * 动作以 QiAct_ 自定义动作形式内置发布，用户无需安装原版插件即可使用，
+     * 且对原版停更 / Web Worker 故障完全免疫。
+     */
+    function syncXiaosuPack() {
+        if (!Array.isArray(XIAOSU_PACKED)) return;
+        // 清理旧版克隆残留 + 内置包条目（移除全部 source==='xiaosu'，稍后按需补回；
+        // 这样关闭开关时 builtin 条目也能被正确移除，且包升级时旧条目自动被权威数据替换）
+        state.customActions = state.customActions.filter(function(a) {
+            return !(a && a.source === 'xiaosu');
+        });
+        if (state.xiaosuPack) {
+            XIAOSU_PACKED.forEach(function(p) {
+                if (!state.customActions.some(function(a) { return a.id === p.id; })) {
+                    state.customActions.push(p);
+                }
+            });
+        }
+    }
+
+    /** 开关「内置小酥动作包」：持久化 → 同步列表 → 重新注册到 BC → 刷新面板 */
+    function setXiaosuPack(enabled) {
+        state.xiaosuPack = !!enabled;
+        persist(S_XIAOSU_PACK, state.xiaosuPack);
+        syncXiaosuPack();
+        registerAllCustomActions();
+        saveCustomActions();
+        updateCustomActionPanel(state.selectedTarget);
+    }
+
     /** 导出自定义动作为 JSON 文件 */
     function exportCustomActions() {
         try {
@@ -204,6 +239,9 @@
             }
         } catch (e) { console.warn('[QiAct] 清理自定义动作残留失败:', e.message); }
         state.customActions.forEach(function(act) { caRegister(act); });
+        // 末尾统一清理：把已存小酥克隆对应的原版活动从 BC 全局数组物理移除，
+        // 避免原版插件仍在运行时出现重复（无论原版是否加载，无残留则空操作）。
+        try { caRemoveSuppressedEchoActivities(); } catch (e) { silent(e, 'caRemoveSuppressedEcho'); }
     }
 
     /** 切换「全部」范围开关，并更新按钮视觉 */

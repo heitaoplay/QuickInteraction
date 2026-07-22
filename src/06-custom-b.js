@@ -41,6 +41,32 @@
             '<button class="xsact-ca-toggleall' + (allOn ? ' is-on' : '') + '" id="xsact-ca-toggleall" title="' + (allOn ? '当前全部开启，点击全部关闭' : '当前全部关闭，点击全部开启') + '">' + svgIcon(allOn ? 'toggleOn' : 'toggleOff', 16) + '</button>' +
             '</div></div>';
 
+        // 分类 chip 过滤栏：按来源（all/xiaosu/native/echo）单选；空分类置灰
+        var _counts = { all: acts.length, xiaosu: 0, native: 0, echo: 0 };
+        acts.forEach(function(a) {
+            if (a.source === 'xiaosu') _counts.xiaosu++;
+            else if (a.source === 'echo') _counts.echo++;
+            else _counts.native++;
+        });
+        var _chips = [
+            { key: 'all', label: '全部', count: _counts.all, color: 'all' },
+            { key: 'xiaosu', label: '小酥', count: _counts.xiaosu, color: 'xiaosu' },
+            { key: 'native', label: '我的', count: _counts.native, color: 'native' },
+            { key: 'echo', label: 'echo', count: _counts.echo, color: 'echo' }
+        ];
+        html += '<div class="xsact-ca-chips" id="xsact-ca-chips">';
+        _chips.forEach(function(ch) {
+            var active = state.caFilter === ch.key;
+            var empty = ch.count === 0 && ch.key !== 'all';
+            var dis = empty ? ' is-disabled' : '';
+            var act = active ? ' is-active' : '';
+            html += '<button type="button" class="xsact-ca-chip ' + ch.color + act + dis + '" data-filter="' + ch.key + '"' + (empty ? ' disabled' : '') + '>' +
+                '<span class="xsact-ca-chip-label">' + ch.label + '</span>' +
+                '<span class="xsact-ca-chip-count">' + ch.count + '</span>' +
+            '</button>';
+        });
+        html += '</div>';
+
         // 编辑模式批量栏
         if (editMode) {
             html += '<div class="xsact-ca-batchbar" id="xsact-ca-batchbar">' +
@@ -64,17 +90,42 @@
                     '<button class="xsact-ca-echo-clean-btn" id="xsact-ca-echo-clean-btn" type="button">清理原 echo 数据</button>' +
                 '</div>';
             }
-        } catch (e) {}
+        } catch (e) { silent(e, 'renderEchoCleanHint'); }
+
+        // 内置小酥动作包（单行极简：仅标题 + 紧凑开关，长描述走 title hover）
+        // 仅在「小酥」chip 下显示 — 开关本身只对小酥分类有意义，
+        // 其他分类下隐藏避免视觉干扰 + 杜绝「我的」tab 下开关位置漂移。
+        if (state.caFilter === 'xiaosu') {
+            html += '<div class="xsact-ca-xiaosu" id="xsact-ca-xiaosu">' +
+                '<span class="xsact-ca-xiaosu-label" title="内置小酥动作包（XiaoSuActivity 全部 51 个动作，预编译进插件，离线可用，无需原版插件）">内置小酥动作包</span>' +
+                '<label class="xsact-ca-toggle xsact-ca-xiaosu-switch" title="开启后，「我的动作」与 BC 原生动作列表显示小酥动作拓展的全部动作">' +
+                    '<input type="checkbox" class="xsact-ca-xiaosu-pack"' + (state.xiaosuPack ? ' checked' : '') + '>' +
+                    '<span class="xsact-ca-toggle-track"></span>' +
+                '</label>' +
+            '</div>';
+        }
 
         if (!acts.length) {
             html += '<div class="xsact-qa-empty xsact-ca-empty">还没有自定义动作。点「新建」创建，或点「导入」从 echo/回声 迁移。</div>';
         } else {
-            html += '<div class="xsact-ca-list' + (editMode ? ' is-editing' : '') + '">';
-            acts.forEach(function(a) {
+            // 按当前 chip 过滤（不改 customActions 顺序，仅隐藏不匹配卡片）
+            var _flt = state.caFilter || 'all';
+            var _visibleActs = acts.filter(function(a) {
+                if (_flt === 'all') return true;
+                if (_flt === 'xiaosu') return a.source === 'xiaosu';
+                if (_flt === 'echo') return a.source === 'echo';
+                if (_flt === 'native') return !a.source || a.source === 'native';
+                return true;
+            });
+            if (!_visibleActs.length) {
+                html += '<div class="xsact-qa-empty xsact-ca-empty xsact-ca-filter-empty">当前分类下没有动作。</div>';
+            } else {
+                html += '<div class="xsact-ca-list' + (editMode ? ' is-editing' : '') + '">';
+                _visibleActs.forEach(function(a) {
                 var scopeBadge = a.scope === 'self' ? '<span class="xsact-ca-badge self">仅自己</span>'
                     : a.scope === 'other' ? '<span class="xsact-ca-badge other">仅他人</span>'
                     : '<span class="xsact-ca-badge any">皆可</span>';
-                var sourceBadge = a.source === 'echo' ? '<span class="xsact-ca-src echo" title="来自 echo/回声 导入">echo</span>' : '<span class="xsact-ca-src native" title="本插件创建">QiAct</span>';
+                var sourceBadge = a.source === 'xiaosu' ? '<span class="xsact-ca-src xiaosu" title="内置小酥动作包（预编译，无需原版插件）">小酥</span>' : a.source === 'echo' ? '<span class="xsact-ca-src echo" title="来自 echo/回声 导入">echo</span>' : '<span class="xsact-ca-src native" title="本插件创建">QiAct</span>';
                 var partLbl = (BODY_PARTS.find(function(p) { return p.group === a.group; }) || {}).label || a.group;
                 var isVisible = a.visible !== false;
                 var isSel = !!selSet[a.id];
@@ -118,6 +169,7 @@
                 }
             });
             html += '</div>';
+            }
         }
         html += '</div>';
         listEl.innerHTML = html;
@@ -158,9 +210,30 @@
         var echoCleanBtn = listEl.querySelector('#xsact-ca-echo-clean-btn');
         if (echoCleanBtn) echoCleanBtn.addEventListener('click', function(e) {
             e.stopPropagation();
-            if (confirm('确定清理原 echo/回声 中的自定义动作数据吗？\n仅删除其「动作数据」，不影响本插件与其他配置（清理后系统更稳定）。')) {
-                caCleanupEchoData();
-            }
+            qiactConfirm({
+                title: '清理原 echo 数据',
+                body: '确定清理原 echo/回声 中的自定义动作数据吗？\n仅删除其「动作数据」，不影响本插件与其他配置（清理后系统更稳定）。',
+                confirmText: '清理',
+                danger: true
+            }).then(function(ok) {
+                if (ok) caCleanupEchoData();
+            });
+        });
+        var packToggle = listEl.querySelector('.xsact-ca-xiaosu-pack');
+        if (packToggle) packToggle.addEventListener('change', function() {
+            setXiaosuPack(!!packToggle.checked);
+            updateCustomActionPanel(charObj);
+        });
+        // chip 过滤：点击切换 caFilter，持久化，重新渲染
+        listEl.querySelectorAll('.xsact-ca-chip').forEach(function(btn) {
+            if (btn.disabled) return;
+            btn.addEventListener('click', function() {
+                var k = btn.dataset.filter;
+                if (!k || state.caFilter === k) return;
+                state.caFilter = k;
+                persist(S_CA_FILTER, k);
+                updateCustomActionPanel(charObj);
+            });
         });
         var searchInput = listEl.querySelector('#xsact-ca-search');
         if (searchInput) searchInput.addEventListener('input', function() {
@@ -204,7 +277,7 @@
                 e.stopPropagation();
                 var id = btn.dataset.id;
                 var a = getCustom(id);
-                if (a && confirm('确定删除自定义动作「' + a.name + '」吗？')) { deleteCustom(id); updateCustomActionPanel(charObj); toast('已删除', '#888'); }
+                if (a) qiactConfirm({ title: '删除动作', body: '确定删除自定义动作「' + a.name + '」吗？', confirmText: '删除', danger: true }).then(function(ok) { if (!ok) return; deleteCustom(id); updateCustomActionPanel(charObj); toast('已删除', '#888'); });
             });
         });
         listEl.querySelectorAll('.xsact-ca-visible').forEach(function(chk) {
@@ -269,11 +342,19 @@
             if (batchDeleteBtn) batchDeleteBtn.addEventListener('click', function() {
                 if (!state.caSelected.length) return;
                 var names = state.caSelected.map(function(id) { var a = getCustom(id); return a ? a.name : ''; }).filter(Boolean).join('、');
-                if (!confirm('确定批量删除以下 ' + state.caSelected.length + ' 个动作吗？\n' + names)) return;
-                state.caSelected.slice().forEach(function(id) { deleteCustom(id); });
-                state.caSelected = [];
-                updateCustomActionPanel(charObj);
-                toast('已批量删除 ' + state.caSelected.length + ' 个动作', '#FF5C5C');
+                var n = state.caSelected.length;
+                qiactConfirm({
+                    title: '批量删除 ' + n + ' 个动作',
+                    body: '确定批量删除以下动作吗？\n' + names,
+                    confirmText: '全部删除',
+                    danger: true
+                }).then(function(ok) {
+                    if (!ok) return;
+                    state.caSelected.slice().forEach(function(id) { deleteCustom(id); });
+                    state.caSelected = [];
+                    updateCustomActionPanel(charObj);
+                    toast('已批量删除 ' + n + ' 个动作', '#FF5C5C');
+                });
             });
 
             // 拖拽排序
