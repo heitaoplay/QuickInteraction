@@ -172,7 +172,7 @@
 
     /** 启动时重新注册所有已存自定义动作到 BC（使本会话内可执行） */
     function registerAllCustomActions() {
-        // 清理：移除 BC 注册表中不在当前自定义动作列表里的 XSQAct_ / XSAct_CA_ 残留条目
+        // 清理：移除 BC 注册表中不在当前自定义动作列表里的 QiAct_ / XSQAct_ / XSAct_CA_ 残留条目
         // （防止旧版本残留、重复注入或重复注册导致动作面板显示 CA_xxx 裸 ID；
         //   XSAct_CA_ 为早期版本前缀，部分第三方 mod（小酥的動作拓展）会遍历 XSAct* 活动，
         //   旧前缀与其冲突导致原生动作界面崩溃，升级后必须清除。）
@@ -181,7 +181,7 @@
             var acts = caRawAllActivities(fam);
             var validNames = new Set();
             state.customActions.forEach(function(a) { validNames.add(caActivityName(a)); });
-            var OLD_PREFIXES = ['XSAct_CA_', CA_PREFIX];
+            var OLD_PREFIXES = ['XSAct_CA_', 'XSQAct_', CA_PREFIX];
             var isStale = function(name) {
                 return OLD_PREFIXES.some(function(p) { return name.indexOf(p) === 0; });
             };

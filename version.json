@@ -1,12 +1,11 @@
 {
-  "version": "1.1.7",
-  "date": "2026-07-21",
-  "severity": "normal",
-  "summary": [
-    "【更名】品牌缩写 XSAct* → QiAct*：Mod 命名空间、调试句柄（__QiAct / __QiAct_Loaded__ 等）、日志前缀、自定义动作卡片来源徽章（原误显示 XSAct，易与小酥的 XSAct_ 混淆）统一改为 QiAct，辨识更清晰",
-    "【更名】内部兜底字典键 XSAct_ChatFallback → QiAct_ChatFallback（发送端与接收端成对同步，跨客户端中文动作文本不丢）",
-    "【更名】油猴脚本显示名「快捷互动 (QuickInteraction)」→「快捷互动 (QiAct)」、Loader 名「快捷互动 Loader」→「QiAct Loader」，缩短可见名称；仓库名 QuickInteraction 与更新 URL 保持不变，不影响老用户自动更新",
-    "【补漏·v1.1.7】补全 v1.1.6 更名遗漏：自定义动作导出文件名 xsact_custom_actions.json → qiact_custom_actions.json（与设计稿对齐）；调试句柄 __XSACT_ADT_PATCHED → __QiAct_ADT_PATCHED（原日志已标 [QiAct] 但句柄名遗漏，现统一）。功能与行为完全不变"
-  ],
-  "detailsUrl": "https://github.com/heitaoplay/QuickInteraction/releases/tag/v1.1.7"
+  "version": "1.2.0",
+  "date": "2026-07-22",
+  "summary": "自定义动作内部 ID 前缀 XSQAct_ → QiAct_ 无感迁移：前缀不写入存档，刷新后自动换 ID，原有自定义动作照常使用、跨客户端中文显示不变；并显式清理旧 XSQAct_ / XSAct_CA_ 残留条目，避免动作面板出现裸 ID 重复项。",
+  "detailsUrl": "https://github.com/heitaoplay/QuickInteraction/releases/tag/v1.2.0",
+  "announcement": {
+    "id": "2026-07-22-prefix-migrate-v1.2.0",
+    "title": "QiAct v1.2.0 自定义动作前缀无感迁移",
+    "text": "本次将自定义动作内部 ID 前缀由 XSQAct_ 统一为 QiAct_。你的自定义动作无需任何操作，刷新即自动迁移、照常使用；跨客户端中文显示不受影响。仓库名与更新地址保持不变。"
+  }
 }

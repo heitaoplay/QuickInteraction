@@ -1,5 +1,5 @@
     /* ===== 6.5 自定义动作（CRUD + 注册 + 执行 + 互通） ===== */
-    var CA_PREFIX = 'XSQAct_';  // 自定义动作内部 Activity 名前缀；避免与 XiaoSuActivity 的 XSAct_ 前缀冲突
+    var CA_PREFIX = 'QiAct_';  // 自定义动作内部 Activity 名前缀；避免与 XiaoSuActivity 的 XSAct_ 前缀冲突
     function caHash(str) {
         // 稳定字符串哈希 → base36，避免引入 btoa / 中文编码问题
         var h = 5381;
@@ -84,7 +84,7 @@
             // 自定义动作实际走我们自己的发包逻辑（Type:'Chat'），Chat 句子极少被原生路径使用，
             // 此处仅为补全字典、杜绝 MISSING 文本。
             // 子部位（如 ItemMouth2）额外在主部位（ItemMouth）注册一份，
-            // 避免 BC 原生面板以主部位为 key 查询时显示 XSQAct_ 内部 ID。
+            // 避免 BC 原生面板以主部位为 key 查询时显示 QiAct_ 内部 ID。
             var groups = [group];
             if (typeof SUBPART_TO_BASE !== 'undefined' && SUBPART_TO_BASE[group]) groups.push(SUBPART_TO_BASE[group]);
             groups.forEach(function(g) {
@@ -162,14 +162,14 @@
     /**
      * 自动检测动作来源（用于动作列表的来源水印标注 + LSCG/Liko 点击后自动刷新）。
      * 返回：'LSCG' | 'LIKO' | 'XIAOSU' | 'ECHO' | 'CUSTOM' | null（null = BC 原版，不标注）。
-     * 检测顺序很重要：XSQAct_ 是我们自定义动作前缀，必须先于 XSAct_ 判断，
+     * 检测顺序很重要：QiAct_ 是我们自定义动作前缀，必须先于 XSAct_ 判断，
      * 否则会被第三方 mod 小酥（XiaoSuActivity，前缀 XSAct_）抢匹配。
      */
     function caDetectSource(name) {
         if (!name || typeof name !== 'string') return null;
         if (name.indexOf('LSCG_') === 0) return 'LSCG';
         if (name.indexOf('Liko_') === 0) return 'LIKO';
-        if (name.indexOf(CA_PREFIX) === 0) {            // XSQAct_ 本插件自定义动作
+        if (name.indexOf(CA_PREFIX) === 0) {            // QiAct_ 本插件自定义动作
             var ca = caFindByActivityName(name);
             if (ca && ca.source === 'echo') return 'ECHO';
             return 'CUSTOM';                            // 用户自建
@@ -235,7 +235,7 @@
     }
     /**
      * echo/回声 导入动作屏蔽机制：
-     * 当用户把 echo 自定义动作导入到本插件后，本插件会生成 XSQAct_ 前缀的新 BC Activity。
+     * 当用户把 echo 自定义动作导入到本插件后，本插件会生成 QiAct_ 前缀的新 BC Activity。
      * 如果不把 echo 端同名的原始 Activity 屏蔽，动作面板和 BC 原生动作列表里会出现两个同名动作。
      * 方案：
      *   1. 导入时记录 echo 原始动作名（data[].Name）。
@@ -301,7 +301,7 @@
         // 1) 精确匹配：导入时记录的原始名 + 注册表扫描到的精确变体（如 笨蛋笨Luzi_uc09b0）
         if (state.echoSuppressed.has(n)) return true;
         // 2) 安全的中文前缀兜底：仅当 name 的中文前缀以“已导入 echo 动作的中文显示名前缀”开头，
-        //    且该 name 不是本插件自定义动作（XSQAct_）时，才视为 echo 原始变体需屏蔽。
+        //    且该 name 不是本插件自定义动作（QiAct_）时，才视为 echo 原始变体需屏蔽。
         //    关键：BC 原生动作 Name 通常为英文，caExtractChinesePrefix 返回空，不会被误伤；
         //    前缀集合只来自用户真正导入的 echo 动作，因此不会扩大化删除正常动作。
         if (state.echoPrefixes && state.echoPrefixes.size) {

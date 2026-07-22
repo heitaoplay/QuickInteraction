@@ -15,7 +15,7 @@
             };
         }
 
-        // 自定义动作（XSQAct_ 前缀）：走 BC 原生「Action 文本」机制（与游戏内 `.a` / BCX 同款）。
+        // 自定义动作（QiAct_ 前缀）：走 BC 原生「Action 文本」机制（与游戏内 `.a` / BCX 同款）。
         // 关键：包里直接内嵌对话文本（Text 字段），接收端（含原生 BC 与 BCX）直接渲染，
         // 不需要接收方安装任何插件 —— 解决「标准 Activity 包会让无插件者看到 MISSING TEXT」的问题。
         // 昵称由我们在文本里用 {SourceCharacter}/{TargetCharacter} → Nickname 手动拼入，确保显示昵称而非原始 ID。
@@ -81,7 +81,7 @@
         // 从而被误判 contentKeyMissing 退回 Action 兜底 —— 这正是效果丢失的根因。
         // patchActivityDictionaryText()（main 登录后安装，数组兜底）已让 ActivityDictionaryText
         // 在 MISSING 时回退数组查找，使 contentKeyMissing 对 XSAct_ 也变 false；
-        // 这里再对 XSAct_（排除本插件自定义动作 XSQAct_ 和已 suppress 的 echo 原始动作）
+        // 这里再对 XSAct_（排除本插件自定义动作 QiAct_ 和已 suppress 的 echo 原始动作）
         // 强制走标准 Activity 包，双保险，与它们在真实游戏里原生触发完全一致。
         // findAllowedActivity 已兜底兜住「活动不在 AssetAllActivities」的非法情况，不会发出无效包。
         var isForcedActivityMod = /^(LSCG_|Liko_)/.test(name || '') ||

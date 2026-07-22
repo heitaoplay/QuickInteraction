@@ -2,7 +2,7 @@
 // @name         快捷互动 (QiAct)
 // @name:zh      快捷互动
 // @namespace    https://github.com/heitaoplay/QuickInteraction
-// @version      1.1.7
+// @version      1.2.0
 // @description  Bondage Club - 统一动作操作台。一键进入动作模式，在聊天室场景内直接点人物部位选动作，绕过原生5步嵌套菜单。
 // @author       Tao MUSE
 // @homepageURL  https://github.com/heitaoplay/QuickInteraction
@@ -61,7 +61,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         if (!_serverSyncWarned) { _serverSyncWarned = true; toast('设置同步到服务器失败，已保留在本地', '#FF5C5C'); }
     }
 
-    const VERSION = '1.1.7';
+    const VERSION = '1.2.0';
 
     // ── 存储键 ──
     const S_ENABLED = 'xsact_qa_enabled';
@@ -711,7 +711,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             };
         }
 
-        // 自定义动作（XSQAct_ 前缀）：走 BC 原生「Action 文本」机制（与游戏内 `.a` / BCX 同款）。
+        // 自定义动作（QiAct_ 前缀）：走 BC 原生「Action 文本」机制（与游戏内 `.a` / BCX 同款）。
         // 关键：包里直接内嵌对话文本（Text 字段），接收端（含原生 BC 与 BCX）直接渲染，
         // 不需要接收方安装任何插件 —— 解决「标准 Activity 包会让无插件者看到 MISSING TEXT」的问题。
         // 昵称由我们在文本里用 {SourceCharacter}/{TargetCharacter} → Nickname 手动拼入，确保显示昵称而非原始 ID。
@@ -777,7 +777,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         // 从而被误判 contentKeyMissing 退回 Action 兜底 —— 这正是效果丢失的根因。
         // patchActivityDictionaryText()（main 登录后安装，数组兜底）已让 ActivityDictionaryText
         // 在 MISSING 时回退数组查找，使 contentKeyMissing 对 XSAct_ 也变 false；
-        // 这里再对 XSAct_（排除本插件自定义动作 XSQAct_ 和已 suppress 的 echo 原始动作）
+        // 这里再对 XSAct_（排除本插件自定义动作 QiAct_ 和已 suppress 的 echo 原始动作）
         // 强制走标准 Activity 包，双保险，与它们在真实游戏里原生触发完全一致。
         // findAllowedActivity 已兜底兜住「活动不在 AssetAllActivities」的非法情况，不会发出无效包。
         var isForcedActivityMod = /^(LSCG_|Liko_)/.test(name || '') ||
@@ -1105,7 +1105,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
 
 
     /* ===== 6.5 自定义动作（CRUD + 注册 + 执行 + 互通） ===== */
-    var CA_PREFIX = 'XSQAct_';  // 自定义动作内部 Activity 名前缀；避免与 XiaoSuActivity 的 XSAct_ 前缀冲突
+    var CA_PREFIX = 'QiAct_';  // 自定义动作内部 Activity 名前缀；避免与 XiaoSuActivity 的 XSAct_ 前缀冲突
     function caHash(str) {
         // 稳定字符串哈希 → base36，避免引入 btoa / 中文编码问题
         var h = 5381;
@@ -1190,7 +1190,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             // 自定义动作实际走我们自己的发包逻辑（Type:'Chat'），Chat 句子极少被原生路径使用，
             // 此处仅为补全字典、杜绝 MISSING 文本。
             // 子部位（如 ItemMouth2）额外在主部位（ItemMouth）注册一份，
-            // 避免 BC 原生面板以主部位为 key 查询时显示 XSQAct_ 内部 ID。
+            // 避免 BC 原生面板以主部位为 key 查询时显示 QiAct_ 内部 ID。
             var groups = [group];
             if (typeof SUBPART_TO_BASE !== 'undefined' && SUBPART_TO_BASE[group]) groups.push(SUBPART_TO_BASE[group]);
             groups.forEach(function(g) {
@@ -1268,14 +1268,14 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
     /**
      * 自动检测动作来源（用于动作列表的来源水印标注 + LSCG/Liko 点击后自动刷新）。
      * 返回：'LSCG' | 'LIKO' | 'XIAOSU' | 'ECHO' | 'CUSTOM' | null（null = BC 原版，不标注）。
-     * 检测顺序很重要：XSQAct_ 是我们自定义动作前缀，必须先于 XSAct_ 判断，
+     * 检测顺序很重要：QiAct_ 是我们自定义动作前缀，必须先于 XSAct_ 判断，
      * 否则会被第三方 mod 小酥（XiaoSuActivity，前缀 XSAct_）抢匹配。
      */
     function caDetectSource(name) {
         if (!name || typeof name !== 'string') return null;
         if (name.indexOf('LSCG_') === 0) return 'LSCG';
         if (name.indexOf('Liko_') === 0) return 'LIKO';
-        if (name.indexOf(CA_PREFIX) === 0) {            // XSQAct_ 本插件自定义动作
+        if (name.indexOf(CA_PREFIX) === 0) {            // QiAct_ 本插件自定义动作
             var ca = caFindByActivityName(name);
             if (ca && ca.source === 'echo') return 'ECHO';
             return 'CUSTOM';                            // 用户自建
@@ -1341,7 +1341,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
     }
     /**
      * echo/回声 导入动作屏蔽机制：
-     * 当用户把 echo 自定义动作导入到本插件后，本插件会生成 XSQAct_ 前缀的新 BC Activity。
+     * 当用户把 echo 自定义动作导入到本插件后，本插件会生成 QiAct_ 前缀的新 BC Activity。
      * 如果不把 echo 端同名的原始 Activity 屏蔽，动作面板和 BC 原生动作列表里会出现两个同名动作。
      * 方案：
      *   1. 导入时记录 echo 原始动作名（data[].Name）。
@@ -1407,7 +1407,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         // 1) 精确匹配：导入时记录的原始名 + 注册表扫描到的精确变体（如 笨蛋笨Luzi_uc09b0）
         if (state.echoSuppressed.has(n)) return true;
         // 2) 安全的中文前缀兜底：仅当 name 的中文前缀以“已导入 echo 动作的中文显示名前缀”开头，
-        //    且该 name 不是本插件自定义动作（XSQAct_）时，才视为 echo 原始变体需屏蔽。
+        //    且该 name 不是本插件自定义动作（QiAct_）时，才视为 echo 原始变体需屏蔽。
         //    关键：BC 原生动作 Name 通常为英文，caExtractChinesePrefix 返回空，不会被误伤；
         //    前缀集合只来自用户真正导入的 echo 动作，因此不会扩大化删除正常动作。
         if (state.echoPrefixes && state.echoPrefixes.size) {
@@ -2443,7 +2443,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
 
     /** 启动时重新注册所有已存自定义动作到 BC（使本会话内可执行） */
     function registerAllCustomActions() {
-        // 清理：移除 BC 注册表中不在当前自定义动作列表里的 XSQAct_ / XSAct_CA_ 残留条目
+        // 清理：移除 BC 注册表中不在当前自定义动作列表里的 QiAct_ / XSQAct_ / XSAct_CA_ 残留条目
         // （防止旧版本残留、重复注入或重复注册导致动作面板显示 CA_xxx 裸 ID；
         //   XSAct_CA_ 为早期版本前缀，部分第三方 mod（小酥的動作拓展）会遍历 XSAct* 活动，
         //   旧前缀与其冲突导致原生动作界面崩溃，升级后必须清除。）
@@ -2452,7 +2452,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
             var acts = caRawAllActivities(fam);
             var validNames = new Set();
             state.customActions.forEach(function(a) { validNames.add(caActivityName(a)); });
-            var OLD_PREFIXES = ['XSAct_CA_', CA_PREFIX];
+            var OLD_PREFIXES = ['XSAct_CA_', 'XSQAct_', CA_PREFIX];
             var isStale = function(name) {
                 return OLD_PREFIXES.some(function(p) { return name.indexOf(p) === 0; });
             };
@@ -4973,7 +4973,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
         if (!state.modApi) return;
 
         // ── Hook: ActivityAllowedForGroup —— 屏蔽 echo 端已导入的同名原始动作 ──
-        // 用户把 echo 动作导入到本插件后，会生成 XSQAct_ 前缀的新 Activity。
+        // 用户把 echo 动作导入到本插件后，会生成 QiAct_ 前缀的新 Activity。
         // 这里把 echo 原始 Activity（Name 在 echoSuppressed 集合中）过滤掉，
         // 确保插件动作列表和 BC 原生动作列表都不出现重复项。
         try {
@@ -5117,7 +5117,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
 
         // ── Hook: ActivityRun（优先级 -100，先于记录 hook 拦截）──
         // 原生动作界面点击我们的自定义动作时，BC 原生 ActivityRun 会按「当前菜单部位组」
-        // 与「acted 是否为玩家」拼出 ChatSelf/ChatOther-<group>-<XSQAct_xxx> 再发送，
+        // 与「acted 是否为玩家」拼出 ChatSelf/ChatOther-<group>-<QiAct_xxx> 再发送，
         // 这与我们的字典注册组 / self-other 选择可能不一致（例如自我动作点到他人身上会变成
         // ChatOther = 无占位符的纯标签），导致接收端 MISSING TEXT 或「人物名称占位符」未被替换。
         // 这里拦截：本地副作用仍交给 BC（sendMessage=false），消息改走与插件 UI 完全一致的
@@ -5156,7 +5156,7 @@ var bcModSdk=function(){"use strict";const o="1.2.0";function e(o){alert("Mod ER
 
         // ── Hook: ElementButton.CreateForActivity —— 为自定义动作按钮注入图标 ──
         // BC 的 Activity 对象无 Image/Icon 字段，原生按钮会尝试加载
-        // ./Assets/Female3DCG/Activity/<XSQAct_xxx>.png（该文件不存在 → 破图/无图）。
+        // ./Assets/Female3DCG/Activity/<QiAct_xxx>.png（该文件不存在 → 破图/无图）。
         // 这里把按钮主图覆盖为插件品牌图标（玫红方块 + 白色闪电 data URL），
         // 使自定义动作在原生动作界面也能显示辨识图标，且不会出现破图。
         try {

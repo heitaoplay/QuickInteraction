@@ -112,7 +112,7 @@
         if (!state.modApi) return;
 
         // ── Hook: ActivityAllowedForGroup —— 屏蔽 echo 端已导入的同名原始动作 ──
-        // 用户把 echo 动作导入到本插件后，会生成 XSQAct_ 前缀的新 Activity。
+        // 用户把 echo 动作导入到本插件后，会生成 QiAct_ 前缀的新 Activity。
         // 这里把 echo 原始 Activity（Name 在 echoSuppressed 集合中）过滤掉，
         // 确保插件动作列表和 BC 原生动作列表都不出现重复项。
         try {
@@ -256,7 +256,7 @@
 
         // ── Hook: ActivityRun（优先级 -100，先于记录 hook 拦截）──
         // 原生动作界面点击我们的自定义动作时，BC 原生 ActivityRun 会按「当前菜单部位组」
-        // 与「acted 是否为玩家」拼出 ChatSelf/ChatOther-<group>-<XSQAct_xxx> 再发送，
+        // 与「acted 是否为玩家」拼出 ChatSelf/ChatOther-<group>-<QiAct_xxx> 再发送，
         // 这与我们的字典注册组 / self-other 选择可能不一致（例如自我动作点到他人身上会变成
         // ChatOther = 无占位符的纯标签），导致接收端 MISSING TEXT 或「人物名称占位符」未被替换。
         // 这里拦截：本地副作用仍交给 BC（sendMessage=false），消息改走与插件 UI 完全一致的
@@ -295,7 +295,7 @@
 
         // ── Hook: ElementButton.CreateForActivity —— 为自定义动作按钮注入图标 ──
         // BC 的 Activity 对象无 Image/Icon 字段，原生按钮会尝试加载
-        // ./Assets/Female3DCG/Activity/<XSQAct_xxx>.png（该文件不存在 → 破图/无图）。
+        // ./Assets/Female3DCG/Activity/<QiAct_xxx>.png（该文件不存在 → 破图/无图）。
         // 这里把按钮主图覆盖为插件品牌图标（玫红方块 + 白色闪电 data URL），
         // 使自定义动作在原生动作界面也能显示辨识图标，且不会出现破图。
         try {
